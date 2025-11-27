@@ -39,19 +39,41 @@ from .utils.typing import Float, Int, Bool, typecheck
 
 # constants
 
+INCLUDE_NEGATIVES = False
+
 DEFAULT_DDP_KWARGS = DistributedDataParallelKwargs(
     find_unused_parameters = True
 )
-SHAPE_CODE = {
-    'CubeBevel': 0,
-    'SphereSharp': 1,
-    'CylinderSharp': 2,
-}
-BS_NAME = {
-    0: 'CubeBevel',
-    1: 'SphereSharp',
-    2: 'CylinderSharp',
-}
+
+
+if INCLUDE_NEGATIVES:
+    SHAPE_CODE = {
+        'CubeBevel_Pos': 0,
+        'SphereSharp_Pos': 1,
+        'CylinderSharp_Pos': 2,
+        'CubeBevel_Neg': 3,
+        'SphereSharp_Neg': 4,
+        'CylinderSharp_Neg': 5,
+    }
+    BS_NAME = {
+        0: 'CubeBevel',
+        1: 'SphereSharp',
+        2: 'CylinderSharp',
+        3: 'CubeBevel',
+        4: 'SphereSharp',
+        5: 'CylinderSharp',
+    }
+else:
+    SHAPE_CODE = {
+        'CubeBevel': 0,
+        'SphereSharp': 1,
+        'CylinderSharp': 2,
+    }
+    BS_NAME = {
+        0: 'CubeBevel',
+        1: 'SphereSharp',
+        2: 'CylinderSharp',
+    }
 
 # FiLM block
 
@@ -220,7 +242,10 @@ class PrimitiveTransformerDiscrete(Module, PyTorchModelHubMixin):
         self.undiscretize_translation = partial(undiscretize, num_discrete=num_discrete_translation, continuous_range=continuous_range_translation)
         self.translation_embed = nn.Embedding(num_discrete_translation, dim_translation_embed)
 
-        self.num_type = num_type
+        if INCLUDE_NEGATIVES:
+            self.num_type = num_type * 2
+        else:
+            self.num_type = num_type
         self.type_embed = nn.Embedding(num_type, dim_type_embed)
 
         self.embed_order = embed_order

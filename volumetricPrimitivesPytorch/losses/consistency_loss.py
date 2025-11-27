@@ -5,7 +5,8 @@ from pytorch3d.structures import Volumes
 
 from modules.cuboid import CuboidSurface
 from modules.transformer import rigidPointsTransform
-
+from torch import nn
+from pytorch3d.loss import chamfer_distance
 
 
 def consistency_loss(predParts, n_samples, targetPoints, loadedVoxels):
