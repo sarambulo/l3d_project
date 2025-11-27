@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 from modules.transformer import rigidTsdf
 
+INCLUDE_NEGATIVES = False
 
 def coverage_loss(sampledPoints, predParts):  ## coverage loss
     """
@@ -36,9 +37,32 @@ def tsdf_transform(sample_points, part):
     shape = part[:, :, 0:3]  # B x 1 x 3
     trans = part[:, :, 3:6]  # B  x 1 x 3
     quat = part[:, :, 6:10]  # B x 1 x 4
+    prim_type = part[:, :, -1].long().squeeze(1)
 
     p1 = rigidTsdf(sample_points, trans, quat)  # B x nP x 3
-    tsdf = cuboid_tsdf(p1, shape)  # B x nP x 1
+
+    if not INCLUDE_NEGATIVES:
+        tsdf = cuboid_tsdf(p1, shape)
+    else:
+        is_negative = prim_type >= 3
+        prim_type = prim_type % 3
+        tsdf = torch.zeros(p1.size(0), p1.size(1), 1, device=p1.device)
+
+        cuboid_mask = prim_type == 0
+        sphere_mask = prim_type == 1
+        cylinder_mask = prim_type == 2
+
+        if cuboid_mask.any():
+            tsdf[cuboid_mask] = cuboid_tsdf(p1[cuboid_mask], shape[cuboid_mask])
+        
+        if sphere_mask.any():
+            radius = shape[sphere_mask][:, :, 0:1]
+            tsdf[sphere_mask] = sphere_tsdf(p1[sphere_mask], radius)
+        
+        if cylinder_mask.any():
+            radius, height = shape[cylinder_mask][:, :, 0:1], shape[cylinder_mask][:, :, 2:3]
+            tsdf[cylinder_mask] = cylinder_tsdf(p1[cylinder_mask], radius, height)
+    
     return tsdf
 
 
@@ -50,6 +74,24 @@ def cuboid_tsdf(sample_points, shape):
     tsdf = torch.abs(sample_points) - shape_rep
     tsdfSq = F.relu(tsdf).pow(2).sum(dim=2)
     return tsdfSq  ## Batch_size x nP x 1
+
+def sphere_tsdf(sample_points, radius):
+    ## sample_points Batch_size x nP x 3, shape Batch_size x 1 x 1
+    dist = torch.norm(sample_points, dim=2, keepdim=True) ## Batch_size x nP x 1
+    tsdf = abs(dist) - radius
+    tsdfSq = F.relu(tsdf).pow(2)
+    return tsdfSq
+
+def cylinder_tsdf(sample_points, radius, height):
+    ## sample_points Batch_size x nP x 3, radius Batch_size x 1 x 1, height Batch_size x 1 x 1
+    xy = sample_points[:, :, :2]
+    z = sample_points[:, :, 2:3]
+
+    d_xy = torch.norm(xy, dim=2, keepdim=True)
+    tsdf_r = F.relu(d_xy - radius).pow(2)
+    tsdf_h = F.relu(abs(z) - height).pow(2)
+    tsdf = tsdf_r + tsdf_h
+    return tsdf
 
 
 def get_existence_weights(tsdf, part):

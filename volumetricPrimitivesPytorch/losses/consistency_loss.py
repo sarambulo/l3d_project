@@ -4,14 +4,22 @@ import pytorch3d.ops
 from pytorch3d.structures import Volumes
 
 from modules.cuboid import CuboidSurface
+from modules.sphere import SphereSurface
+from modules.cylinder import CylinderSurface
 from modules.transformer import rigidPointsTransform
 from torch import nn
 from pytorch3d.loss import chamfer_distance
 
 
+INCLUDE_NEGATIVES = False
+
+
 def consistency_loss(predParts, n_samples, targetPoints, loadedVoxels):
+
     cuboid_sampler = CuboidSurface(n_samples, normFactor="Surf")
-    sampled_points, imp_weights = partComposition(predParts, cuboid_sampler)
+    sphere_sampler = SphereSurface(n_samples, normFactor="Surf")
+    cylinder_sampler = CylinderSurface(n_samples, normFactor="Surf")
+    sampled_points, imp_weights = partComposition(predParts, cuboid_sampler, sphere_sampler, cylinder_sampler)
     norm_weights = normalize_weights(imp_weights)
     # Find the closes points
     distance_to_target, target_k_indices = pytorch3d.ops.knn_points(sampled_points, targetPoints, K=1) # (N, SampleSize, K), (N, SampleSize, K)
@@ -47,7 +55,7 @@ def is_point_inside_voxel_grid(points_world: torch.Tensor, volumes: Volumes):
     
     return is_inside_volume
 
-def partComposition(predParts, cuboid_sampler):
+def partComposition(predParts, cuboid_sampler, sphere_sampler, cylinder_sampler):
     # B x nParts x 10
     nParts = predParts.size(1)
     all_sampled_points = []
@@ -55,7 +63,7 @@ def partComposition(predParts, cuboid_sampler):
     predParts = torch.chunk(predParts, nParts, 1)
     for i in range(nParts):
         sampled_points, imp_weights = primtive_surface_samples(
-            predParts[i], cuboid_sampler
+            predParts[i], cuboid_sampler, sphere_sampler, cylinder_sampler
         )
         transformedSamples = transform_samples(
             sampled_points, predParts[i]
@@ -68,11 +76,35 @@ def partComposition(predParts, cuboid_sampler):
     return pointsOut, weightsOut
 
 
-def primtive_surface_samples(predPart, cuboid_sampler):
+def primtive_surface_samples(predPart, cuboid_sampler, sphere_sampler, cylinder_sampler):
     # B x 1 x 10
     shape = predPart[:, :, 0:3]  # B  x 1 x 3
     probs = predPart[:, :, 11:12]  # B x 1 x 1
-    samples, imp_weights = cuboid_sampler.sample_points_cuboid(shape)
+    if not INCLUDE_NEGATIVES:
+        samples, imp_weights = cuboid_sampler.sample_points_cuboid(shape)
+    else:
+        prim_type = predPart[:, :, 12]
+        prim_type = prim_type % 3
+
+        cuboid_mask = prim_type == 0
+        sphere_mask = prim_type == 1
+        cylinder_mask = prim_type == 2
+
+        samples = torch.zeros(predPart.shape[0], cuboid_sampler.nSamples, 3, device=shape.device)
+        imp_weights = torch.zeros(predPart.shape[0], cuboid_sampler.nSamples, 1, device=probs.device)
+
+        if cuboid_mask.any():
+            s, w = cuboid_sampler.sample_points_cuboid(shape[cuboid_mask])
+            samples[cuboid_mask], imp_weights[cuboid_mask] = s, w 
+        
+        if sphere_mask.any():
+            s, w = sphere_sampler.sample_points_sphere(shape[sphere_mask])
+            samples[sphere_mask], imp_weights[sphere_mask] = s, w 
+        
+        if cylinder_mask.any():
+            s, w = cylinder_sampler.sample_points_cylinder(shape[cylinder_mask])
+            samples[cylinder_mask], imp_weights[cylinder_mask] = s, w 
+        
     probs = probs.expand(imp_weights.size())
     imp_weights = imp_weights * probs
     return samples, imp_weights
