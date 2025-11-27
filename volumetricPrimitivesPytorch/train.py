@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 
 from dataloaders.cadConfigsChamfer import SimpleCadData
 
-from losses import coverage_loss, consistency_loss
+from losses import coverage_loss, consistency_loss, inside_loss
 
 import modules.netUtils as netUtils
 import modules.primitives as primitives
