@@ -292,6 +292,8 @@ class PrimitiveTransformerDiscrete(Module, PyTorchModelHubMixin):
             **attn_kwargs
         )
 
+        self.scale_dim = self.trans_dim = self.rot_dim = 3
+
         # to logits
         self.to_eos_logits = nn.Sequential(
             nn.Linear(dim, dim),
@@ -304,20 +306,24 @@ class PrimitiveTransformerDiscrete(Module, PyTorchModelHubMixin):
             nn.Linear(dim, num_type)
         )
         self.to_translation_logits = nn.Sequential(
-            nn.Linear(dim + dim_type_embed, dim),
+            nn.Linear(dim + self.num_type, dim),
             nn.ReLU(),
             nn.Linear(dim, 3 * num_discrete_translation)
         )
         self.to_rotation_logits = nn.Sequential(
-            nn.Linear(dim + dim_type_embed + 3 * dim_translation_embed, dim),
+            nn.Linear(dim + self.num_type + self.trans_dim, dim),
             nn.ReLU(),
             nn.Linear(dim, 3 * num_discrete_rotation)
         )
         self.to_scale_logits = nn.Sequential(
-            nn.Linear(dim + dim_type_embed + 3 * (dim_translation_embed + dim_rotation_embed), dim),
+            nn.Linear(dim + self.num_type + self.trans_dim + self.rot_dim, dim),
             nn.ReLU(),
             nn.Linear(dim, 3 * num_discrete_scale)
         )
+
+        self.bins_scale = torch.linspace(0, 1, self.num_discrete_scale)
+        self.bins_rotation = torch.linspace(0, 360, self.num_discrete_rotation)
+        self.bins_translation = torch.linspace(-1, 1, self.num_discrete_translation)
 
         self.pad_id = pad_id
 
@@ -373,6 +379,186 @@ class PrimitiveTransformerDiscrete(Module, PyTorchModelHubMixin):
             'type_code': recon_type_code
         }
     
+    def generate_train_sequence(
+        self,
+        batch_size: int | None = None,
+        filter_logits_fn: Callable = top_k_2,
+        filter_kwargs: dict = dict(),
+        temperature: float = 1.,
+        scale: Float['b np 3'] | None = None,
+        rotation: Float['b np 3'] | None = None,
+        translation: Float['b np 3'] | None = None,
+        type_code: Int['b np'] | None = None,
+        pc: Tensor | None = None,
+        pc_embed: Tensor | None = None,
+        cache_kv = True,
+        max_seq_len = None,
+    ):
+        max_seq_len = default(max_seq_len, self.max_seq_len)
+
+        if exists(scale) and exists(rotation) and exists(translation) and exists(type_code):
+            assert not exists(batch_size)
+            assert scale.shape[1] == rotation.shape[1] == translation.shape[1] == type_code.shape[1]
+            assert scale.shape[1] <= self.max_seq_len
+            
+            batch_size = scale.shape[0]
+
+        if self.condition_on_shape:
+            assert exists(pc) ^ exists(pc_embed), '`pc` or `pc_embed` must be passed in'
+            if exists(pc):
+                pc_embed = self.embed_pc(pc)
+
+            batch_size = default(batch_size, pc_embed.shape[0])
+
+        batch_size = default(batch_size, 1)
+
+        scale = default(scale, torch.empty((batch_size, 0, 3), dtype=torch.float64, device=self.device))
+        rotation = default(rotation, torch.empty((batch_size, 0, 3), dtype=torch.float64, device=self.device))
+        translation = default(translation, torch.empty((batch_size, 0, 3), dtype=torch.float64, device=self.device))
+        type_code = default(type_code, torch.empty((batch_size, 0), dtype=torch.int64, device=self.device))
+        type_logits = torch.empty((batch_size, 0, self.num_type), dtype=torch.float64, device=self.device)
+        next_eos_logits = torch.empty((batch_size, 0, 1), dtype=torch.float64, device=self.device)
+
+        curr_length = scale.shape[1]
+
+        cache = None
+        eos_codes = None
+
+        for i in tqdm(range(curr_length, max_seq_len)):
+            can_eos = i != 0
+            output = self.forward(
+                scale=scale,
+                rotation=rotation,
+                translation=translation,
+                type_code=type_code,
+                pc_embed=pc_embed,
+                return_loss=False,
+                return_cache=cache_kv,
+                append_eos=False,
+                cache=cache
+            )
+            if cache_kv:
+                next_embed, cache = output
+            else:
+                next_embed = output
+
+            (
+                scale,
+                rotation,
+                translation,
+                type_logits,
+                type_code
+            ) = self.expected_primitives(
+                scale,
+                rotation,
+                translation,
+                next_embed
+            )
+
+
+            next_eos_logits = self.to_eos_logits(next_embed).squeeze(-1)
+            next_eos_code = (F.sigmoid(next_eos_logits) > 0.5)
+            eos_codes = safe_cat([eos_codes, next_eos_code], 1)
+            if can_eos and eos_codes.any(dim=-1).all():
+                break
+
+        # mask out to padding anything after the first eos
+        mask = eos_codes.float().cumsum(dim=-1) >= 1
+
+        # concat cur_length to mask
+        mask = torch.cat((torch.zeros((batch_size, curr_length), dtype=torch.bool, device=self.device), mask), dim=-1)
+        type_code = type_code.masked_fill(mask, self.pad_id)
+        scale = scale.masked_fill(mask.unsqueeze(-1), self.pad_id)
+        rotation = rotation.masked_fill(mask.unsqueeze(-1), self.pad_id)
+        translation = translation.masked_fill(mask.unsqueeze(-1), self.pad_id)
+        type_logits = type_logits.masked_fill(mask.unsqueeze(-1), self.pad_id)
+
+        recon_primitives = {
+            'scale': scale,
+            'rotation': rotation,
+            'translation': translation,
+            'type_code': type_code,
+            'type_logits': type_logits
+        }
+        primitive_mask = ~eos_codes
+
+        return recon_primitives, primitive_mask
+
+    @typecheck
+    def expected_primitives(
+        self,
+        scale: Float['b np 3 nd'],
+        rotation: Float['b np 3 nd'],
+        translation: Float['b np 3 nd'],
+        type_code: Int['b np nd'],
+        type_logits: Float['b np nt'],
+        next_embed: Float['b 1 nd'],
+    ):
+        def sample_func(logits):
+            if logits.ndim == 4:
+                enable_squeeze = True
+                logits = logits.squeeze(1)
+            else:
+                enable_squeeze = False
+
+
+            probs = F.softmax(logits, dim=-1)
+
+            sample = torch.zeros((probs.shape[0], probs.shape[1]), dtype=torch.long, device=probs.device)
+            for b_i in range(probs.shape[0]):
+                sample[b_i] = torch.multinomial(probs[b_i], 1).squeeze()
+
+            if enable_squeeze:
+                sample = sample.unsqueeze(1)
+
+            return sample
+        
+        def expect_func(logits, bins):
+            if logits.ndim == 4:
+                enable_squeeze = True
+                logits = logits.squeeze(1)
+            else:
+                enable_squeeze = False
+
+            probs = F.softmax(logits, dim=-1) # B x c x nd
+            bins = bins.view(1, 1, -1)
+            expected_logits = torch.sum(probs * bins, dim=-1) # B x c
+
+            if enable_squeeze:
+                expected_logits = expected_logits.unsqueeze(1)
+
+            return expected_logits
+        
+        next_type_logits = self.to_type_logits(next_embed)
+        next_type_code = sample_func(next_type_logits)
+        type_code_new, _ = pack([type_code, next_type_code], 'b *')
+        type_logits_new, _ = pack([type_logits, next_type_logits], 'b * nt')
+
+        next_embed_packed, _ = pack([next_embed, type_logits_new], 'b np *')
+        next_translation_logits = rearrange(self.to_translation_logits(next_embed_packed), 'b np (c nd) -> b np c nd', nd=self.num_discrete_translation)
+        next_translation = expect_func(next_translation_logits, self.bins_translation)
+        translation_new, _ = pack([translation, next_translation], 'b * nd')
+        
+        # next_translation_embed = self.translation_embed(next_discretize_translation)
+        next_embed_packed, _ = pack([next_embed_packed, translation_new], 'b np *')
+        next_rotation_logits = rearrange(self.to_rotation_logits(next_embed_packed), 'b np (c nd) -> b np c nd', nd=self.num_discrete_rotation)
+        next_rotation = expect_func(next_rotation_logits, self.bins_rotation)
+        rotation_new, _ = pack([rotation, next_rotation], 'b * nd')
+
+        next_embed_packed, _ = pack([next_embed_packed, rotation_new], 'b np *')
+        next_scale_logits = rearrange(self.to_scale_logits(next_embed_packed), 'b np (c nd) -> b np c nd', nd=self.num_discrete_scale)
+        next_scale = expect_func(next_scale_logits, self.bins_scale)
+        scale_new, _ = pack([scale, next_scale], 'b * nd')
+
+        # add next_type_logits here
+        return (
+            scale_new,
+            rotation_new,
+            translation_new,
+            type_logits_new,
+            type_code_new
+        )
+
     @typecheck
     def sample_primitives(
         self,
@@ -433,6 +619,7 @@ class PrimitiveTransformerDiscrete(Module, PyTorchModelHubMixin):
         next_scale = self.undiscretize_scale(next_discretize_scale)
         scale_new, _ = pack([scale, next_scale], 'b * nd')
 
+        # add next_type_logits here
         return (
             scale_new,
             rotation_new,

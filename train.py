@@ -39,7 +39,7 @@ def train(dataloader, netPred, reward_shaper, optimizer, iter, params, logger, d
         inputVol = inputVol.to(device)
         sampledPoints = sampledPoints.to(device)
 
-        predParts, stocastic_actions = netPred.forward(inputVol.densities())  ## B x nPars*11
+        predParts, stocastic_actions = netPred.forward(inputVol.densities())  ## B x nPars x 12
         predParts = predParts.view(predParts.size(0), params.nParts, 12)
 
         optimizer.zero_grad()
@@ -125,7 +125,7 @@ def main():
     # Set device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Initialize model
+    # Initialize model --> change to PrimitiveAnythingDiscrete
     netPred = Network(params)
     
     if params.usePretrain:
