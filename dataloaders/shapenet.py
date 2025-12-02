@@ -34,7 +34,7 @@ class ShapeNetDataset(Dataset):
         self.shapenet_dir = shapenet_dir
         self.n_sample_points = n_sample_points
 
-        self.shapenet_dataset = ShapeNetCore(self.shapenet_dir, version=2)
+        self.shapenet_dataset = ShapeNetCore(self.shapenet_dir, version=2, load_textures=False)
 
     def __len__(self):
         return len(self.shapenet_dataset)

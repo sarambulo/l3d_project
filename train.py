@@ -3,6 +3,7 @@ CUDA_VISIBLE_DEVICES=1 python cadAutoEncCuboids/primSelTsdfChamfer.py
 """
 
 import os
+from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
@@ -72,6 +73,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         empty_mask = (faces == -1).all(dim=[1, 2]) # B
         vertices = vertices[~empty_mask]
         faces = faces[~empty_mask]
+        sampledPoints = sampledPoints[~empty_mask]
         if len(faces) > 0:
             meshes = Meshes(
                 verts=vertices, faces=faces
@@ -105,6 +107,10 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
 @torch.inference_mode()
 def evaluate(dataloader, netPred, device, epoch) -> float:
+    # Setup output directory
+    output_dir = f'visualizations/epoch_{epoch}/'
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
     # Get batch
     netPred.eval()
     progress_bar = tqdm(dataloader, desc="Validation progress", leave=False)
@@ -123,40 +129,59 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
         sequence = None
+        log_probs = []
         point_feats = None
         for t in range(netPred.n_primitives):
             scale, rot, transl, cls, eos, point_feats = netPred(
                 sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
             )
 
-            embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1)
+            embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
 
-            if sequence is None or sequence[-1][:, t-1, 0] != 0:
-                sample, _ = get_samples(embedding) # B x 1 x 11
-            else:
-                sample, _ = torch.zeros_like(sequence[:, :1, :]), torch.zeros_like(log_probs[-1])
+            sample, log_prob = get_samples(embedding) # B x 1 x 11
                 
             sequence = sample if sequence is None else torch.concat([sequence, sample], dim=1) # (B, T + 1, 11)
 
         primitives = get_primitives(sequence, netPred.n_primitives)
         vertices, faces = generate_mesh_from_primitives(primitives)
-        meshes = Meshes(
-            verts=vertices, faces=faces
-        )
-        predPoints = sample_points_from_meshes(meshes, 10000)
-        loss, _ = chamfer_distance_loss(predPoints, sampledPoints, point_reduction='mean')
-        assert isinstance(loss, torch.Tensor)
 
-        # Visualize predicted mesh
-        for index in range(len(vertices)):
-            output_dir = f'visualizations/epoch_{epoch}/'
+        # Start with max_loss for empty meshes
+        B = sampledPoints.size(0)
+        batch_loss = torch.full((B,), fill_value=1000, dtype=torch.float, device=device)
+
+        # Mask out empty meshes
+        empty_mask = (faces == -1).all(dim=[1, 2]) # B
+        vertices = vertices[~empty_mask]
+        faces = faces[~empty_mask]
+        sampledPoints = sampledPoints[~empty_mask]
+        if len(faces) > 0:
+            meshes = Meshes(
+                verts=vertices, faces=faces
+            )
+            predPoints = sample_points_from_meshes(meshes, 1000)
+
+            # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
+            # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
+            # loss = cov_loss + params.chamferLossWt * cons_loss
+            loss, _ = chamfer_distance_loss(
+                predPoints, sampledPoints[:, :, :3], batch_reduction=None, point_reduction='mean'
+            ) # B
+            assert isinstance(loss, torch.Tensor)
+
+            non_empty_indices = torch.arange(0, B, 1, device=device)[~empty_mask]
+            batch_loss[non_empty_indices] = loss
+
+            # Visualize predicted mesh
             output_filename_format = '{:d}.gif'.format
-            output_filename_format_gt = '{:d}_gt.gif'.format
             render_mesh(vertices[index], faces[index], output_dir + output_filename_format(visualization_count), device=device)
+
+        # Visualize ground truth mesh
+        for index in range(B):
+            output_filename_format_gt = '{:d}_gt.gif'.format
             render_mesh(vertsGt[index], facesGt[index], output_dir + output_filename_format_gt(visualization_count), device=device)
             visualization_count +=1
 
-        validation_loss += loss.item() / n_batch
+        validation_loss += batch_loss.mean().item() / n_batch
 
     return validation_loss
 
@@ -166,7 +191,7 @@ def main():
     params.visDir = os.path.join("output/visualization/", params.name)
     params.visMeshesDir = os.path.join("output/visualization/meshes/", params.name)
     params.snapshotDir = os.path.join("output/snapshots/", params.name)
-    params.primTypes = 3 # TODO Change to CLI
+    params.primTypes = 6 # TODO Change to CLI
 
     if not os.path.exists(params.visDir):
         os.makedirs(params.visDir)
@@ -180,14 +205,14 @@ def main():
     # Load dataset
     train_dataset = ShapeNetDataset(
         shapenet_dir="./data/shapenet_train/",
-        n_sample_points=10000,  # Match Michelangelo's training
+        n_sample_points=1000,  # Match Michelangelo's training
     )
     train_dataloader = DataLoader(
         train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
     )
     test_dataset = ShapeNetDataset(
         shapenet_dir="./data/shapenet_test/",
-        n_sample_points=10000,  # Match Michelangelo's training
+        n_sample_points=1000,  # Match Michelangelo's training
     )
     test_dataloader = DataLoader(
         test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
@@ -195,6 +220,7 @@ def main():
 
     # Set device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # device = 'cpu'
 
     # Initialize model
 

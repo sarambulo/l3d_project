@@ -11,8 +11,7 @@ def compute_combined_sdf_from_primitives(grid_points: torch.Tensor, primitives: 
     
     Returns: (M,) tensor of combined SDF values
     """
-    batch_positive_distances = []
-    batch_negative_distances = []
+    batch_combined_sdf = []
     for batch in primitives:
         positives_distances = []
         negatives_distances = []
@@ -22,27 +21,15 @@ def compute_combined_sdf_from_primitives(grid_points: torch.Tensor, primitives: 
                 positives_distances.append(distances)
             else:
                 negatives_distances.append(distances)
-        if positives_distances:
-            positives_distances = torch.stack(positives_distances) # (P, N)
-            batch_positive_distances.append(positives_distances)
-        if negatives_distances:
-            negatives_distances = torch.stack(negatives_distances) # (P, N)
-            batch_negative_distances.append(negatives_distances)
-    if batch_positive_distances:
-        batch_positive_distances = torch.stack(batch_positive_distances) # (B, P, N)
-    else:
-        batch_positive_distances = None
-    if batch_negative_distances:
-        batch_negative_distances = torch.stack(batch_negative_distances) # (B, P, N)
-    else:
-        batch_negative_distances = None
-    
-    if batch_negative_distances is None and batch_positive_distances is None:
-        return None
-    else:
-        combined_sdf = combine_sdfs(batch_positive_distances, batch_negative_distances) # (B, N)
-
-    return combined_sdf
+        positives_distances = None if positives_distances == [] else torch.stack(positives_distances).unsqueeze(0) # (1, P, N)
+        negatives_distances = None if negatives_distances == [] else torch.stack(negatives_distances).unsqueeze(0) # (1, P, N)
+        if positives_distances is None and negatives_distances is None:
+            return None
+        else:
+            combined_sdf = combine_sdfs(positives_distances, negatives_distances) # (1, N)
+            batch_combined_sdf.append(combined_sdf)
+    batch_combined_sdf = torch.concat(batch_combined_sdf) # (B, N)
+    return batch_combined_sdf
 
 def combine_sdfs(positive_distances: torch.Tensor | None, negative_distances: torch.Tensor | None):
     """
@@ -57,10 +44,11 @@ def combine_sdfs(positive_distances: torch.Tensor | None, negative_distances: to
     # Union of primitives (min operation)
     if positive_distances is not None:
         result_sdf = positive_distances.min(dim=1)[0] # (B, P, N) -> (B, N)
-    elif negative_distances:
+    else:
         # If no positive primitives, start with large positive values
+        assert negative_distances is not None
         B, _, N = negative_distances.shape
-        result_sdf = torch.full((B, N), float('inf'))
+        return torch.ones((B, N), device=negative_distances.device)
     
     if negative_distances is not None:
         negative_distances = negative_distances.min(dim=1)[0] # (B, P, N) -> (B, N)
@@ -120,6 +108,16 @@ def generate_volume_from_primitives(primitives_batch: list[list], device: str = 
     xyz_min = torch.min(torch.stack(xyz_min), dim=0)[0]
     xyz_max = torch.max(torch.stack(xyz_max), dim=0)[0]
 
+    # Calculate volume translation (center of the bounding box)
+    volume_center = (xyz_max + xyz_min) / 2
+
+    # Range of the voxel
+    half_range = (xyz_max - xyz_min) / 2
+
+    # Expand the corners
+    xyz_min = volume_center - half_range * 1.2
+    xyz_max = volume_center + half_range * 1.2
+
     # Create grid points to evaluate on the combined SDF
     x = torch.linspace(xyz_min[0].item(), xyz_max[0].item(), resolution, device=device)
     y = torch.linspace(xyz_min[1].item(), xyz_max[1].item(), resolution, device=device)
@@ -146,14 +144,11 @@ def generate_volume_from_primitives(primitives_batch: list[list], device: str = 
     # Calculate voxel size based on bbox and resolution
     voxel_size = (xyz_max - xyz_min) / (resolution - 1)
     
-    # Calculate volume translation (center of the bounding box)
-    volume_translation = (xyz_max + xyz_min) / 2
-    
     # Create Volumes object
     volumes = Volumes(
         densities=occupancy_volume,
         voxel_size=voxel_size,
-        volume_translation=volume_translation
+        volume_translation=volume_center
     )
     
     return volumes

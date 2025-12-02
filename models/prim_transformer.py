@@ -229,16 +229,20 @@ class PrimitiveTransformerQuaternion(nn.Module):
             [torch.nn.functional.softplus(scale_params[:, :, :3]), scale_params[:, :, 3:]],
             dim=-1
         )
-        # scale_params = self._postprocess_params(scale_params)
-        # rotation_params = self._postprocess_params(rotation_params)
-        # translation_params = self._postprocess_params(translation_params)
+        rotation_params = torch.concat(
+            [(rotation_params[:, :, :4] / rotation_params[:, :, :4].norm(dim=-1, keepdim=True)), rotation_params[:, :, 4:]],
+            dim=-1
+        )
+        scale_params = self._postprocess_vars(scale_params)
+        rotation_params = self._postprocess_vars(rotation_params)
+        translation_params = self._postprocess_vars(translation_params)
         
         return scale_params, rotation_params, translation_params, class_logits, eos_logits, point_features
     
-    # def _postprocess_params(self, params: torch.Tensor) -> torch.Tensor:
-    #     """Ensures values are positive using softplus."""
-    #     dim = params.shape[-1]
-    #     half = dim // 2
-    #     mu = params[..., :half]
-    #     sigma = params[..., half:]  # Add small constant for numerical stability
-    #     return torch.cat([mu, sigma], dim=-1)
+    def _postprocess_vars(self, params: torch.Tensor) -> torch.Tensor:
+        """Ensures values are positive using softplus."""
+        dim = params.shape[-1]
+        half = dim // 2
+        mu = params[..., :half]
+        sigma = torch.nn.functional.softplus(params[..., half:]) + 1e-8
+        return torch.cat([mu, sigma], dim=-1)
