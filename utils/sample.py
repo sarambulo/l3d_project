@@ -7,7 +7,7 @@ def get_log_probs(mean, var, sample):
 def get_sample(mean, var):
     std_dev = torch.sqrt(var)
     eps = torch.randn_like(mean)
-    eps = torch.clamp(eps, min=-1.0, max=1.0)
+    eps = torch.clamp(eps, min=-0.5, max=0.5)
     sample = mean + eps * std_dev
     return sample
 

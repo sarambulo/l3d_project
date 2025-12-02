@@ -96,8 +96,10 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             f"Total Loss: {batch_loss.mean().item():.4f}"
         )
         
-        loss = ((batch_loss - value.detach()) * log_probs).mean()
-        loss = loss + torch.nn.functional.mse_loss(value, batch_loss.detach())
+        loss_shape = batch_loss.mean() # Reduce the batch loss
+        loss_probs = ((batch_loss - value).detach() * log_probs).mean() # Decrease the prob of bad generations
+        loss_critic = torch.nn.functional.mse_loss(value, batch_loss.detach())
+        loss= loss_shape + loss_probs + loss_critic
 
         optimizer.zero_grad()
         loss.backward()
@@ -133,7 +135,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         log_probs = []
         point_feats = None
         for t in range(netPred.n_primitives):
-            scale, rot, transl, cls, eos, point_feats = netPred(
+            scale, rot, transl, cls, eos, point_feats, value = netPred(
                 sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
             )
 
@@ -206,14 +208,14 @@ def main():
     # Load dataset
     train_dataset = ShapeNetDataset(
         shapenet_dir="./data/shapenet_train/",
-        n_sample_points=1000,  # Match Michelangelo's training
+        n_sample_points=4096,  # Match Michelangelo's training
     )
     train_dataloader = DataLoader(
         train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
     )
     test_dataset = ShapeNetDataset(
         shapenet_dir="./data/shapenet_test/",
-        n_sample_points=1000,  # Match Michelangelo's training
+        n_sample_points=4096,  # Match Michelangelo's training
     )
     test_dataloader = DataLoader(
         test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
