@@ -1,3 +1,4 @@
+from matplotlib.pylab import LinAlgError
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -87,6 +88,16 @@ class PrimitiveTransformerQuaternion(nn.Module):
             norm_first=True
         )
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
+
+        # Value function
+        self.critic = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, 1),
+            nn.Softplus()
+        )
         
         # Output heads
         self._build_output_heads()
@@ -176,6 +187,11 @@ class PrimitiveTransformerQuaternion(nn.Module):
                 self.to_cond_dim(pc_embed)            # (B, seq_len, d_model)
             ], dim=-2)
         batch_size = point_features.shape[0]
+
+        # Predict value using critic network
+        value = self.critic(
+            point_features[:, 0, :]
+        )
         
         # Project point features
         # point_features = self.point_feature_proj(point_features)
@@ -237,7 +253,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         rotation_params = self._postprocess_vars(rotation_params)
         translation_params = self._postprocess_vars(translation_params)
         
-        return scale_params, rotation_params, translation_params, class_logits, eos_logits, point_features
+        return scale_params, rotation_params, translation_params, class_logits, eos_logits, point_features, value
     
     def _postprocess_vars(self, params: torch.Tensor) -> torch.Tensor:
         """Ensures values are positive using softplus."""

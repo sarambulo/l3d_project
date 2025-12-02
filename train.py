@@ -41,7 +41,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         log_probs = []
         point_feats = None
         for t in range(netPred.n_primitives):
-            scale, rot, transl, cls, eos, point_feats = netPred(
+            scale, rot, transl, cls, eos, point_feats, value = netPred(
                 sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
             )
 
@@ -78,7 +78,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             meshes = Meshes(
                 verts=vertices, faces=faces
             )
-            predPoints = sample_points_from_meshes(meshes, 1000)
+            predPoints = sample_points_from_meshes(meshes, 5000)
 
             # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
             # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
@@ -95,8 +95,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         progress_bar.set_postfix_str(
             f"Total Loss: {batch_loss.mean().item():.4f}"
         )
-
-        loss = (batch_loss * log_probs).mean()
+        
+        loss = ((batch_loss - value.detach()) * log_probs).mean()
+        loss = loss + torch.nn.functional.mse_loss(value, batch_loss.detach())
 
         optimizer.zero_grad()
         loss.backward()
