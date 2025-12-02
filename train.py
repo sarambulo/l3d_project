@@ -181,14 +181,14 @@ def main():
         n_sample_points=10000,  # Match Michelangelo's training
     )
     train_dataloader = DataLoader(
-        train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4
+        train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
     )
     test_dataset = ShapeNetDataset(
         shapenet_dir="./data/shapenet_test/",
         n_sample_points=10000,  # Match Michelangelo's training
     )
     test_dataloader = DataLoader(
-        test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4
+        test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
     )
 
     # Set device
@@ -216,7 +216,7 @@ def main():
     netPred.to(device)
 
     # Setup optimizer
-    optimizer = get_optimizer(netPred)
+    optimizer = get_optimizer(netPred, lr=3e-5)
 
     # Initialize training metrics
 

@@ -60,7 +60,7 @@ class ShapeNetDataset(Dataset):
         points_normals = torch.cat([surface_points, normals], dim=-1)
         return points_normals, verts, faces # (N, 6), where first three are x, y and z and last three are normals along each axis
 
-    def collate_fn(batch):
+    def collate_fn(self, batch):
         points_list, verts_list, faces_list = zip(*batch)
 
         batch_points = torch.stack(points_list, dim=0)
