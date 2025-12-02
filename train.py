@@ -67,7 +67,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
-        batch_loss = torch.full((B,), fill_value=1000, dtype=torch.float, device=device)
+        batch_loss = torch.full((B,), fill_value=10000, dtype=torch.float, device=device)
 
         # Mask out empty meshes
         empty_mask = (faces == -1).all(dim=[1, 2]) # B
@@ -78,7 +78,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             meshes = Meshes(
                 verts=vertices, faces=faces
             )
-            predPoints = sample_points_from_meshes(meshes, 5000)
+            predPoints = sample_points_from_meshes(meshes, 1000)
 
             # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
             # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
