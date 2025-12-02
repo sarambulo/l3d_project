@@ -23,6 +23,7 @@ from pytorch3d.renderer import (
 from pytorch3d.structures import Meshes, Volumes
 from pytorch3d.ops import sample_points_from_meshes
 from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
 
 # add path for demo utils functions 
 import sys
@@ -58,3 +59,22 @@ class ShapeNetDataset(Dataset):
 
         points_normals = torch.cat([surface_points, normals], dim=-1)
         return points_normals, verts, faces # (N, 6), where first three are x, y and z and last three are normals along each axis
+
+    def collate_fn(batch):
+        points_list, verts_list, faces_list = zip(*batch)
+
+        batch_points = torch.stack(points_list, dim=0)
+
+        batch_vertices = pad_sequence(
+            verts_list, 
+            batch_first=True, 
+            padding_value=0
+        )
+
+        batch_faces = pad_sequence(
+            faces_list, 
+            batch_first=True, 
+            padding_value=-1
+        )
+
+        return batch_points, batch_vertices, batch_faces
