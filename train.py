@@ -5,6 +5,7 @@ CUDA_VISIBLE_DEVICES=1 python cadAutoEncCuboids/primSelTsdfChamfer.py
 import os
 import torch
 from torch.utils.data import DataLoader
+from torch.nn.utils import clip_grad_norm_
 from models.prim_transformer import PrimitiveTransformerQuaternion
 from dataloaders.shapenet import ShapeNetDataset
 from pytorch3d.ops import sample_points_from_meshes
@@ -97,6 +98,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
         optimizer.zero_grad()
         loss.backward()
+        clip_grad_norm_(netPred.parameters(), max_norm=1.0)
         optimizer.step()
 
     return loss.item()
