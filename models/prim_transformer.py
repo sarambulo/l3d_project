@@ -69,7 +69,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         # self.point_feature_proj = nn.Linear(point_feature_dim, d_model)
         
         # Learnable query embeddings for primitives
-        self.primitive_encoder = nn.Embedding(n_classes, d_primitive_embedding)
+        self.primitive_encoder = nn.Embedding(n_classes + 1, d_primitive_embedding)
         
         # SOS token
         self.sos_token = nn.Parameter(torch.randn(1, 1, d_model))
@@ -185,7 +185,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
 
         if sequence is not None:
             # Encode primitive classes
-            primitive_indices = sequence[:, :, -1].int()
+            primitive_indices = sequence[:, :, -1].int() # 0 - 6
             primitive_embeddings = self.primitive_encoder(primitive_indices) # (B, T, D)
             # Replace primitive classes with primitive embeddings
             sequence = torch.concat(
