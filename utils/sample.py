@@ -11,6 +11,7 @@ def get_log_probs(mean, logvar, sample):
 def get_sample(mean, var):
     std_dev = torch.sqrt(var)
     eps = torch.randn_like(mean)
+    eps = torch.clamp(eps, min=-1.0, max=1.0)
     sample = mean + eps * std_dev
     return sample
 
