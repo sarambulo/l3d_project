@@ -176,7 +176,8 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
 
             # Visualize predicted mesh
             output_filename_format = '{:d}.gif'.format
-            render_mesh(vertices[index], faces[index], output_dir + output_filename_format(visualization_count), device=device)
+            for index in range(len(vertices)):
+                render_mesh(vertices[index], faces[index], output_dir + output_filename_format(visualization_count + index), device=device)
 
         # Visualize ground truth mesh
         for index in range(B):

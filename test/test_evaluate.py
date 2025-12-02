@@ -50,7 +50,8 @@ def test_evaluate_writes_gifs(tmp_path, monkeypatch):
          cls = torch.ones((B, 1, self.n_classes), dtype=torch.float32)
          eos = torch.zeros((B, 1, 1), dtype=torch.float32)  # use ones so sequence keeps sampling
          point_feats = None
-         return scale, rot, transl, cls, eos, point_feats
+         value = torch.ones((B, 1), dtype=torch.float32)
+         return scale, rot, transl, cls, eos, point_feats, value
 
    net = DummyNet(n_primitives=3, n_classes=3)
 
