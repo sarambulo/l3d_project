@@ -14,7 +14,7 @@ def get_sample(mean, var):
 def get_sample_and_probs(mean, var, is_scale: bool = False):
     sample = get_sample(mean, var)
     if is_scale:
-        sample = sample.clip(1e-8, None)
+        sample = sample.clip(2, None)
     log_probs = get_log_probs(mean, var, sample)
     return sample, log_probs
 
