@@ -201,7 +201,7 @@ def main():
     params.visDir = os.path.join("output/visualization/", params.name)
     params.visMeshesDir = os.path.join("output/visualization/meshes/", params.name)
     params.snapshotDir = os.path.join("output/snapshots/", params.name)
-    params.primTypes = 6 # TODO Change to CLI
+    params.primTypes = 1 # TODO Change to CLI
 
     if not os.path.exists(params.visDir):
         os.makedirs(params.visDir)
