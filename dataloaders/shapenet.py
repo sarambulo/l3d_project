@@ -54,8 +54,10 @@ class ShapeNetDataset(Dataset):
         center = (min_vals + max_vals)/2
         surface_points = surface_points-center
         
-        scale = (max_vals - min_vals).max()
-        surface_points = surface_points / scale
+        # scale = (max_vals - min_vals).max()
+        norms = surface_points.norm(dim=1, keepdim=True)
+        norms = torch.clamp(norms, min=1e-8)
+        surface_points = surface_points / norms
 
         points_normals = torch.cat([surface_points, normals], dim=-1)
         return points_normals, verts, faces # (N, 6), where first three are x, y and z and last three are normals along each axis
