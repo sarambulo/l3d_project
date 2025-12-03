@@ -206,14 +206,14 @@ def main():
 
     # Load dataset
     train_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet/",
+        shapenet_dir="./data/shapenet_train/",
         n_sample_points=4096,  # Match Michelangelo's training
     )
     train_dataloader = DataLoader(
         train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
     )
     test_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet/",
+        shapenet_dir="./data/shapenet_test/",
         n_sample_points=4096,  # Match Michelangelo's training
     )
     test_dataloader = DataLoader(
