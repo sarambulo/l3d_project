@@ -12,16 +12,16 @@ def get_samples(embedding):
     scale_mean, scale_var = embedding[:, :, 0:3], embedding[:, :, 3:6]
     rot_mean, rot_var = embedding[:, :, 6:10], embedding[:, :, 10:14]
     trans_mean, trans_var = embedding[:, :, 14:17], embedding[:, :, 17:20]
-    type_logits = embedding[:, :, 20:]
+    type_logits = embedding[:, :, 21:]
 
     next_state = torch.empty((B, nPart, 11), dtype=embedding.dtype, device=embedding.device)
     
     scale, scale_logprobs = get_sample_and_probs(scale_mean, scale_var, is_scale=True)
     quaternion, quaternion_logprobs = get_sample_and_probs(rot_mean, rot_var)
     translation, translation_logprobs = get_sample_and_probs(trans_mean, trans_var)
-    type = torch.stack([torch.multinomial(F.softmax(logits.squeeze(0), dim=-1), num_samples=1) for logits in type_logits]) # B x 1
+    type = torch.stack([torch.multinomial(F.softmax(logits.squeeze(0), dim=-1), num_samples=1) + 1 for logits in type_logits]) # B x 1
     type_logprobs = F.log_softmax(type_logits, dim=-1)
-    type_logprobs = type_logprobs.gather(dim=-1, index=type.unsqueeze(-1)).squeeze(-1)
+    type_logprobs = type_logprobs.gather(dim=-1, index=type.unsqueeze(-1) - 1).squeeze(-1)
 
     next_state[:, :, 0:3] = scale 
     next_state[:, :, 3:7] = quaternion 
