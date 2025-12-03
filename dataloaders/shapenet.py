@@ -51,7 +51,7 @@ class ShapeNetDataset(Dataset):
         min_vals = surface_points.min(dim=0)[0]  # (3,)
         max_vals = surface_points.max(dim=0)[0]  # (3,)
         
-        center = (min_vals + max_vals)/2
+        center = center.mean(dim=0)
         surface_points = surface_points-center
         
         # scale = (max_vals - min_vals).max()
