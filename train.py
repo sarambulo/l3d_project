@@ -51,7 +51,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
         embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
 
-        sequence, log_probs = get_samples(embedding) # B x 1 x 11
+        sequence, log_probs = get_samples(embedding) # B x T x 11, (B,)
 
         assert sequence is not None
 

@@ -19,23 +19,27 @@ def get_samples(embedding):
     scale, scale_logprobs = get_sample_and_probs(scale_mean, scale_var, is_scale=True)
     quaternion, quaternion_logprobs = get_sample_and_probs(rot_mean, rot_var)
     translation, translation_logprobs = get_sample_and_probs(trans_mean, trans_var)
-    type = torch.stack([torch.multinomial(F.softmax(logits.squeeze(0), dim=-1), num_samples=1) for logits in type_logits]) # B x 1
-    type_logprobs = F.log_softmax(type_logits, dim=-1)
-    type_logprobs = type_logprobs.gather(dim=-1, index=type.unsqueeze(-1)).squeeze(-1)
+    B, T, L = type_logits.shape
+    type = torch.stack([
+        torch.multinomial(F.softmax(logits.squeeze(0), dim=-1), num_samples=1)
+        for logits in type_logits.reshape(B * T, L)
+    ]).reshape(B, T, 1) # B x T x 1
+    type_logprobs = F.log_softmax(type_logits, dim=-1) # B x T x L
 
     next_state[:, :, 0:3] = scale 
     next_state[:, :, 3:7] = quaternion 
     next_state[:, :, 7:10] = translation
-    next_state[:, :, 10] = type
+    next_state[:, :, 10:] = type
 
+    type_logprobs = type_logprobs.gather(dim=-1, index=type).squeeze(-1) # B x T
     scale_logprobs = torch.sum(scale_logprobs, dim=-1)
     quaternion_logprobs = torch.sum(quaternion_logprobs, dim=-1)
     translation_logprobs = torch.sum(translation_logprobs, dim=-1)
 
-    log_probs = scale_logprobs + quaternion_logprobs + translation_logprobs + type_logprobs
-    log_probs = log_probs.unsqueeze(-1)
+    log_probs = scale_logprobs + quaternion_logprobs + translation_logprobs + type_logprobs # B x T
+    log_probs = log_probs.sum(dim=1) # B
     
-    assert log_probs.shape == (next_state.shape[0], 1, 1)
+    assert log_probs.shape == (next_state.shape[0],)
 
     return next_state, log_probs
 
