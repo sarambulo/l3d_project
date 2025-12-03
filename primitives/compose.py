@@ -31,7 +31,7 @@ def compute_combined_sdf_from_primitives(grid_points: torch.Tensor, primitives: 
     batch_combined_sdf = torch.concat(batch_combined_sdf) # (B, N)
     return batch_combined_sdf
 
-def combine_sdfs(positive_distances: torch.Tensor | None, negative_distances: torch.Tensor | None):
+def combine_sdfs(positive_distances, negative_distances):
     """
     Combine multiple SDFs using CSG operations.
     positive_distances: (B: Batch, P: nPrimitives, N: nPoints)

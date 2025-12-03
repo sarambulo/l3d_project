@@ -109,6 +109,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
             nn.Linear(self.d_model, self.d_model),
             nn.ReLU(),
             nn.Linear(self.d_model, 6),
+            nn.Sigmoid()
         )
         
         # Rotation prediction: Quaternion with uncertainty (8 values)
@@ -212,7 +213,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         
         # Post-process to ensure positive scale values
         scale_params = torch.concat(
-            [torch.nn.functional.softplus(scale_params[:, :, :3]), scale_params[:, :, 3:]],
+            [scale_params[:, :, :3], scale_params[:, :, 3:]],
             dim=-1
         )
         rotation_params = torch.concat(
@@ -231,4 +232,8 @@ class PrimitiveTransformerQuaternion(nn.Module):
         half = dim // 2
         mu = params[..., :half]
         sigma = torch.nn.functional.softplus(params[..., half:]) + 1e-8
+
+        mu = mu / 2.0
+        sigma = sigma / 2.0
+
         return torch.cat([mu, sigma], dim=-1)

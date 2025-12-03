@@ -21,6 +21,14 @@ from visualization.render_mesh import render_mesh
 from utils.get_optimizer import get_optimizer
 from pytorch3d.structures import Meshes
 
+
+from transformers import CLIPProcessor, CLIPModel
+
+# Test it works
+model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+print("CLIP loaded successfully!")
+
 torch.manual_seed(0)
 
 
@@ -198,14 +206,14 @@ def main():
 
     # Load dataset
     train_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet_train/",
+        shapenet_dir="./data/shapenet/",
         n_sample_points=4096,  # Match Michelangelo's training
     )
     train_dataloader = DataLoader(
         train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
     )
     test_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet_test/",
+        shapenet_dir="./data/shapenet/",
         n_sample_points=4096,  # Match Michelangelo's training
     )
     test_dataloader = DataLoader(

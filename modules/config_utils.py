@@ -7,7 +7,7 @@ def get_args():
     parser.add_argument('--modelsDataDir', type=str, default='data/r2n2_shapenet', help='Path to dataset')
     parser.add_argument('--synset', type=str, default='chair', nargs='+', help='Shapenet classes', choices=['chair', 'airplane', 'table'])
     parser.add_argument('--nSamplePoints', type=int, default=1000, help='Points sampled from mesh surface')
-    parser.add_argument('--batchSize', type=int, default=16)
+    parser.add_argument('--batchSize', type=int, default=2)
 
     parser.add_argument('--numTrainIter', type=int, default=12)
     parser.add_argument('--visIter', type=int, default=1)
@@ -26,7 +26,7 @@ def get_args():
     parser.add_argument('--gridBound', type=float, default=0.5)
     parser.add_argument('--useBn', type=bool, default=True)
     parser.add_argument('--imsave', type=bool, default=False)
-    parser.add_argument('--gpu',type=bool, default=True)
+    parser.add_argument('--gpu',type=bool, default=False)
     parser.add_argument('--usePretrain', type=bool, default=False)
     parser.add_argument('--shapeLrDecay', type=float, default=0.01)
     parser.add_argument('--probLrDecay', type=float, default=0.0001)
