@@ -9,7 +9,7 @@ def get_samples(embedding):
     a B x 1 x 11 tensor (scale, rotation, translation, class)
     """
     B, nPart, _ = embedding.shape
-    scale_mean, scale_var = embedding[:, :, 0:3], embedding[:, :, 3:6]
+    scale_mean, scale_var = embedding[:, :, 0:3] * 2.0, embedding[:, :, 3:6] * 2.0
     rot_mean, rot_var = embedding[:, :, 6:10], embedding[:, :, 10:14]
     trans_mean, trans_var = embedding[:, :, 14:17], embedding[:, :, 17:20]
     type_logits = embedding[:, :, 21:]

@@ -250,7 +250,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
             [(rotation_params[:, :, :4] / rotation_params[:, :, :4].norm(dim=-1, keepdim=True)), rotation_params[:, :, 4:]],
             dim=-1
         )
-        scale_params = self._postprocess_vars(scale_params)
+        scale_params = self._postprocess_vars(scale_params) / 2.0
         rotation_params = self._postprocess_vars(rotation_params)
         translation_params = self._postprocess_vars(translation_params)
         
@@ -262,8 +262,5 @@ class PrimitiveTransformerQuaternion(nn.Module):
         half = dim // 2
         mu = params[..., :half]
         sigma = torch.nn.functional.softplus(params[..., half:]) + 1e-8
-
-        mu = mu / 2.0
-        sigma = sigma / 2.0
 
         return torch.cat([mu, sigma], dim=-1)
