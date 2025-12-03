@@ -46,7 +46,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
         scale, rot, transl, cls, eos, point_feats, value = netPred(
-            sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
+            point_cloud=sampledPoints, point_features=point_feats
         )
 
         embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
@@ -129,20 +129,15 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         # translation_params: (B, N_primitives, 6) - μ and σ for 3D translation
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
-        sequence = None
-        log_probs = []
-        point_feats = None
-        for t in range(netPred.n_primitives):
-            scale, rot, transl, cls, eos, point_feats, value = netPred(
-                sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
-            )
 
-            embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
+        scale, rot, transl, cls, eos, point_feats, value = netPred(
+            point_cloud=sampledPoints, point_features=point_feats
+        )
 
-            sample, log_prob = get_samples(embedding) # B x 1 x 11
-                
-            sequence = sample if sequence is None else torch.concat([sequence, sample], dim=1) # (B, T + 1, 11)
+        embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
 
+        sequence, _ = get_samples(embedding) # B x 1 x 11
+        
         primitives = get_primitives(sequence, netPred.n_primitives)
         vertices, faces = generate_mesh_from_primitives(primitives)
 
