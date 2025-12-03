@@ -17,6 +17,7 @@ from losses import chamfer_distance_loss
 from modules.config_utils import get_args
 from utils.get_primitives import get_samples, get_primitives
 from primitives.compose import generate_mesh_from_primitives
+from utils.sample import get_embedding_log_probs
 from visualization.render_mesh import render_mesh
 from utils.get_optimizer import get_optimizer
 from pytorch3d.structures import Meshes
@@ -38,7 +39,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
         sequence = None
-        log_probs = []
+        embeddings = []
         point_feats = None
         for t in range(netPred.n_primitives):
             scale, rot, transl, cls, eos, point_feats, value = netPred(
@@ -46,15 +47,19 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             )
 
             embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
+            embeddings.append(embedding)
 
-            sample, log_prob = get_samples(embedding) # B x 1 x 11
-                
+            sample, _ = get_samples(embedding) # B x 1 x 11
             sequence = sample if sequence is None else torch.concat([sequence, sample], dim=1) # (B, T + 1, 11)
-            log_probs.append(log_prob)
-
-        log_probs = torch.concat(log_probs, dim=1) # B x T x 1
-
+                
+        embeddings = torch.concat(embeddings, dim=1) # B, T, 11
         assert sequence is not None
+
+        # Replace empty batch with a single cuboid
+        empty_mask = (sequence[:, :, 10:] == 0).all(dim=[1, 2]) # B
+        sequence[empty_mask, 0, 10] = 1
+        log_probs = get_embedding_log_probs(embeddings, sequence) # B x T x 1
+
         # Generate a mask that is only true if all previous sampled type where not the EOS token
         sampled_types = sequence[..., 10:] # B x T x 1
         mask = (sampled_types != 0).cumprod(dim=1) # B x T x 1
@@ -62,44 +67,37 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         log_probs = (log_probs * mask).sum(dim=[1, 2]) # B
         sequence = sequence * mask # B x T x 11
 
+        # Generate primitives and mesh
         primitives = get_primitives(sequence, netPred.n_primitives)
         vertices, faces = generate_mesh_from_primitives(primitives, device=device)
 
-        # Start with max_loss for empty meshes
-        B = sampledPoints.size(0)
-        batch_loss = torch.full((B,), fill_value=10000, dtype=torch.float, device=device)
+        meshes = Meshes(
+            verts=vertices, faces=faces
+        )
+        predPoints = sample_points_from_meshes(meshes, 1000)
 
-        # Mask out empty meshes
-        empty_mask = (faces == -1).all(dim=[1, 2]) # B
-        vertices = vertices[~empty_mask]
-        faces = faces[~empty_mask]
-        sampledPoints = sampledPoints[~empty_mask]
-        if len(faces) > 0:
-            meshes = Meshes(
-                verts=vertices, faces=faces
-            )
-            predPoints = sample_points_from_meshes(meshes, 1000)
+        # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
+        # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
+        # loss = cov_loss + params.chamferLossWt * cons_loss
+        loss_shape, _ = chamfer_distance_loss(
+            predPoints, sampledPoints[:, :, :3], batch_reduction=None, point_reduction='mean'
+        ) # B
+        assert isinstance(loss_shape, torch.Tensor)
 
-            # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
-            # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
-            # loss = cov_loss + params.chamferLossWt * cons_loss
-            loss, _ = chamfer_distance_loss(
-                predPoints, sampledPoints[:, :, :3], batch_reduction=None, point_reduction='mean'
-            ) # B
-            assert isinstance(loss, torch.Tensor)
+        
+        value = value.squeeze(-1) # B
+        loss_probs = ((loss_shape - value).detach() * log_probs).mean() # Decrease the prob of bad generations
+        loss_critic = torch.nn.functional.mse_loss(value, loss_shape.detach())
+        loss_shape = loss_shape.mean() # Reduce the batch loss
 
-            non_empty_indices = torch.arange(0, B, 1, device=device)[~empty_mask]
-            batch_loss[non_empty_indices] = loss
+        loss = loss_shape + loss_probs + loss_critic
 
         # Display metrics
         progress_bar.set_postfix_str(
-            f"Total Loss: {batch_loss.mean().item():.4f}"
+            f"Shape Loss: {loss_shape.item():.4f}"
+            " | "
+            f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
         )
-        
-        loss_shape = batch_loss.mean() # Reduce the batch loss
-        loss_probs = ((batch_loss - value).detach() * log_probs).mean() # Decrease the prob of bad generations
-        loss_critic = torch.nn.functional.mse_loss(value, batch_loss.detach())
-        loss= loss_shape + loss_probs + loss_critic
 
         optimizer.zero_grad()
         loss.backward()
