@@ -37,30 +37,15 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         # translation_params: (B, N_primitives, 6) - μ and σ for 3D translation
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
-        sequence = None
-        log_probs = []
-        point_feats = None
-        for t in range(netPred.n_primitives):
-            scale, rot, transl, cls, eos, point_feats, value = netPred(
-                sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
-            )
+        scale, rot, transl, cls, eos, point_feats, value = netPred(
+            sequence=sequence, point_cloud=sampledPoints, point_features=point_feats
+        )
 
-            embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
+        embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
 
-            sample, log_prob = get_samples(embedding) # B x 1 x 11
-                
-            sequence = sample if sequence is None else torch.concat([sequence, sample], dim=1) # (B, T + 1, 11)
-            log_probs.append(log_prob)
-
-        log_probs = torch.concat(log_probs, dim=1) # B x T x 1
+        sequence, log_probs = get_samples(embedding) # B x 1 x 11
 
         assert sequence is not None
-        # Generate a mask that is only true if all previous sampled type where not the EOS token
-        sampled_types = sequence[..., 10:] # B x T x 1
-        mask = (sampled_types != 0).cumprod(dim=1) # B x T x 1
-        # Mask out every primitive after the first EOS token
-        log_probs = (log_probs * mask).sum(dim=[1, 2]) # B
-        sequence = sequence * mask # B x T x 11
 
         primitives = get_primitives(sequence, netPred.n_primitives)
         vertices, faces = generate_mesh_from_primitives(primitives, device=device)
@@ -105,7 +90,6 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             " | "
             f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
         )
-
 
         optimizer.zero_grad()
         loss.backward()

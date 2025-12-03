@@ -66,7 +66,6 @@ def get_primitives(samples, max_prim_length=8):
                 break
             if prim == 0:
                 batch_list.append(EmptySurface())
-                break
             elif prim == 1:
                 batch_list.append(CuboidSurface(s, r, tr))
             elif prim == 2:

@@ -69,11 +69,8 @@ class PrimitiveTransformerQuaternion(nn.Module):
         # Project point features to model dimension
         # self.point_feature_proj = nn.Linear(point_feature_dim, d_model)
         
-        # Learnable query embeddings for primitives
-        self.primitive_encoder = nn.Embedding(n_classes + 1, d_primitive_embedding)
-        
-        # SOS token
-        self.sos_token = nn.Parameter(torch.randn(1, 1, d_model))
+        # Learnable query embeddings (prompt) for primitives
+        self.queries = nn.Parameter(torch.randn(1, self.n_primitives, d_model))
         
         # Positional encoding
         self.query_pos_encoding = PositionalEncoding(d_model, max_len=n_primitives+1)
@@ -151,17 +148,14 @@ class PrimitiveTransformerQuaternion(nn.Module):
     
     def forward(
         self,
-        sequence: Optional[torch.Tensor] = None,
         point_cloud: Optional[torch.Tensor] = None,
         point_mask: Optional[torch.Tensor] = None,
         point_features: Optional[torch.Tensor] = None,
-        output_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass.
         
         Args:
-            sequence: (B, T, 10 + n_classes + 1) - predicted sequence so far
             point_cloud: (B, N_points, 3) - raw point cloud
             point_features: (B, N_points, D) - pre-encoded features
             point_mask: (B, N_points) - optional mask (True = valid)
@@ -174,8 +168,6 @@ class PrimitiveTransformerQuaternion(nn.Module):
             eos_logits: (B, N_primitives, 1) - end-of-sequence logits
         """
         assert point_cloud is not None or point_features is not None
-
-        # Use SOS token if 
         
         # Extract point features
         if point_features is None:
@@ -193,30 +185,8 @@ class PrimitiveTransformerQuaternion(nn.Module):
             point_features[:, 0, :]
         )
         
-        # Project point features
-        # point_features = self.point_feature_proj(point_features)
-        
-        # Prepare SOS token
-        sos = self.sos_token.expand(batch_size, -1, -1) # (B, 1, d_model)
-
-        if sequence is not None:
-            # Encode primitive classes
-            primitive_indices = sequence[:, :, -1].int() # 0 - 6
-            primitive_embeddings = self.primitive_encoder(primitive_indices) # (B, T, D)
-            # Replace primitive classes with primitive embeddings
-            sequence = torch.concat(
-                [sequence[:, :, :10], primitive_embeddings], dim=-1
-            ) # (B, T, 10 + D)
-            # Project the input to d_model
-            sequence = self.input_d_model_proj(sequence) # (B, 1 + T, d_model)
-            # Preprend SOS token
-            sequence = torch.concat([sos, sequence], dim=1) # (B, 1 + T, d_model)
-        else:
-            sequence = sos
-        
-        # Add positional encoding
-        # Santiago: Removed this because order does not matter in our setting
-        # queries = self.query_pos_encoding(sequence)
+        # Prepend queries
+        sequence = self.queries.expand(batch_size, -1, -1) # (B, 1, d_model)
         
         # Attention mask for point features
         memory_key_padding_mask = None
@@ -231,7 +201,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         )
         
         # Get the last predicted timestep
-        primitive_features = decoded[:, -1:, :]
+        primitive_features = decoded
         
         # Apply prediction heads
         scale_params = self.scale_head(primitive_features)
