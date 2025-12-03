@@ -1,5 +1,9 @@
 # Project specific ignores
 logs/
+logs.txt
+output/
+visualizations/
+visualization/
 data/
 *.pt
 *.ckpt
