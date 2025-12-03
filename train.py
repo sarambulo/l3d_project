@@ -139,7 +139,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         sequence, _ = get_samples(embedding) # B x 1 x 11
         
         primitives = get_primitives(sequence, netPred.n_primitives)
-        vertices, faces = generate_mesh_from_primitives(primitives)
+        vertices, faces = generate_mesh_from_primitives(primitives, device=device)
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
