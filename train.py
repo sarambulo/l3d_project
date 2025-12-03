@@ -83,23 +83,29 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
             # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
             # loss = cov_loss + params.chamferLossWt * cons_loss
-            loss, _ = chamfer_distance_loss(
+            loss_shape, _ = chamfer_distance_loss(
                 predPoints, sampledPoints[:, :, :3], batch_reduction=None, point_reduction='mean'
             ) # B
-            assert isinstance(loss, torch.Tensor)
+            assert isinstance(loss_shape, torch.Tensor)
 
             non_empty_indices = torch.arange(0, B, 1, device=device)[~empty_mask]
-            batch_loss[non_empty_indices] = loss
+            batch_loss[non_empty_indices] = loss_shape
+        loss_shape = batch_loss
+
+        value = value.squeeze(-1) # B
+        loss_probs = ((loss_shape - value).detach() * log_probs).mean() # Decrease the prob of bad generations
+        loss_critic = torch.nn.functional.mse_loss(value, loss_shape.detach())
+        loss_shape = loss_shape.mean() # Reduce the batch loss
+
+        loss = loss_shape + loss_probs + loss_critic
 
         # Display metrics
         progress_bar.set_postfix_str(
-            f"Total Loss: {batch_loss.mean().item():.4f}"
+            f"Shape Loss: {loss_shape.item():.4f}"
+            " | "
+            f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
         )
-        
-        loss_shape = batch_loss.mean() # Reduce the batch loss
-        loss_probs = ((batch_loss - value).detach() * log_probs).mean() # Decrease the prob of bad generations
-        loss_critic = torch.nn.functional.mse_loss(value, batch_loss.detach())
-        loss= loss_shape + loss_probs + loss_critic
+
 
         optimizer.zero_grad()
         loss.backward()
