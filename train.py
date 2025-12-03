@@ -97,6 +97,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             f"Shape Loss: {loss_shape.item():.4f}"
             " | "
             f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
+            f"Shape Loss: {loss_shape.item():.4f}"
+            " | "
+            f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
         )
 
         optimizer.zero_grad()
