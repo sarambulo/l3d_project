@@ -21,7 +21,7 @@ def get_samples(embedding):
     translation, translation_logprobs = get_sample_and_probs(trans_mean, trans_var)
     type = torch.stack([torch.multinomial(F.softmax(logits.squeeze(0), dim=-1), num_samples=1) + 1 for logits in type_logits]) # B x 1
     type_logprobs = F.log_softmax(type_logits, dim=-1)
-    type_logprobs = type_logprobs.gather(dim=-1, index=type.unsqueeze(-1)).squeeze(-1)
+    type_logprobs = type_logprobs.gather(dim=-1, index=type.unsqueeze(-1) - 1).squeeze(-1)
 
     next_state[:, :, 0:3] = scale 
     next_state[:, :, 3:7] = quaternion 
