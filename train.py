@@ -46,7 +46,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
         scale, rot, transl, cls, eos, point_feats, value = netPred(
-            point_cloud=sampledPoints, point_features=point_feats
+            point_cloud=sampledPoints
         )
 
         embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
@@ -131,7 +131,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
 
         scale, rot, transl, cls, eos, point_feats, value = netPred(
-            point_cloud=sampledPoints, point_features=point_feats
+            point_cloud=sampledPoints
         )
 
         embedding = torch.cat([scale, rot, transl, eos, cls], dim=-1) # B, 1, 24
