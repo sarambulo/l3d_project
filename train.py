@@ -29,6 +29,15 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     netPred.train()
     progress_bar = tqdm(dataloader, desc="Epoch progress", leave=False)
     for batch in progress_bar:
+        tensor1, tensor2, tensor3 = batch
+        tensor1 = tensor1.to('cuda')
+        tensor2 = tensor2.to('cuda')
+        tensor3 = tensor3.to('cuda')
+        batch = (tensor1, tensor2, tensor3)
+        # print(f"Batch[0] device: {batch[0].device}")
+        # print(f"Batch[1] device: {batch[1].device}")
+        # print(f"Batch[2] device: {batch[2].device}")
+        # print(f"GPU Memory: {torch.cuda.memory_allocated()/1e9:.2f}GB")
         sampledPoints, verts, faces = batch
         sampledPoints = sampledPoints.to(device)
 
@@ -70,7 +79,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         batch_loss = torch.full((B,), fill_value=10000, dtype=torch.float, device=device)
 
         # Mask out empty meshes
-        empty_mask = (faces == -1).all(dim=[1, 2]) # B
+        empty_mask = (faces == -1).all(dim=2).all(dim=1) # B
         vertices = vertices[~empty_mask]
         faces = faces[~empty_mask]
         sampledPoints = sampledPoints[~empty_mask]
@@ -90,7 +99,12 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
             non_empty_indices = torch.arange(0, B, 1, device=device)[~empty_mask]
             batch_loss[non_empty_indices] = loss
-
+        # Add this in your training loop after generating primitives:
+        print(f"Sequence shape: {sequence.shape}")
+        print(f"Sample sequence: {sequence[0, :5]}")  # First 5 primitives of first batch
+        print(f"EOS tokens: {(sampled_types == 0).sum()}")  # How many EOS?
+        print(f"Empty meshes: {empty_mask.sum()} / {B}")
+        print(f"Valid faces: {(faces != -1).any(dim=-1).any(dim=-1).sum()}")
         # Display metrics
         progress_bar.set_postfix_str(
             f"Total Loss: {batch_loss.mean().item():.4f}"
@@ -146,14 +160,14 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
             sequence = sample if sequence is None else torch.concat([sequence, sample], dim=1) # (B, T + 1, 11)
 
         primitives = get_primitives(sequence, netPred.n_primitives)
-        vertices, faces = generate_mesh_from_primitives(primitives)
+        vertices, faces = generate_mesh_from_primitives(primitives, device=device)
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
         batch_loss = torch.full((B,), fill_value=1000, dtype=torch.float, device=device)
 
         # Mask out empty meshes
-        empty_mask = (faces == -1).all(dim=[1, 2]) # B
+        empty_mask = (faces == -1).all(dim=2).all(dim=1) # B
         vertices = vertices[~empty_mask]
         faces = faces[~empty_mask]
         sampledPoints = sampledPoints[~empty_mask]
@@ -223,7 +237,7 @@ def main():
     )
 
     # Set device
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # device = 'cpu'
 
     # Initialize model
@@ -251,6 +265,20 @@ def main():
     optimizer = get_optimizer(netPred, lr=3e-5)
 
     # Initialize training metrics
+    start_iter = 0
+    if params.checkpoint_path:
+        checkpoint = torch.load(params.checkpoint_path)
+        netPred.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_iter = checkpoint['epoch'] + 1  # Start from next iteration
+        print(f"Resuming from iteration {start_iter}, loss: {checkpoint['loss']:.4f}")
+        evaluate(test_dataloader, netPred, device, epoch=1)
+    elif params.usePretrain:
+        # Existing pretrain loading code
+        load_path = os.path.join("./models/checkpoints", params.pretrainNet)
+        netPretrain = torch.load(load_path)
+        netPred.load_state_dict(netPretrain)
+        print("Loading pretrained model from {}".format(load_path))
 
     # Train the model
     for iter in tqdm(range(params.numTrainIter), desc='Training progress'):
@@ -259,13 +287,21 @@ def main():
         )
 
         # Visualize results
+        torch.save(
+            netPred.state_dict(), "{}/iter{}.pkl".format(params.snapshotDir, iter)
+        )
+        
+        # Also save optimizer state for resuming training
+        torch.save({
+            'epoch': iter,
+            'model_state_dict': netPred.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
+        }, "{}/checkpoint_iter{}.pt".format(params.snapshotDir, iter))
+
+        # Visualize results
         if iter % params.visIter == 0:
             evaluate(test_dataloader, netPred, device, epoch=iter)
-
-        if ((iter + 1) % 10) == 0:
-            torch.save(
-                netPred.state_dict(), "{}/iter{}.pkl".format(params.snapshotDir, iter)
-            )
 
 if __name__ == '__main__':
     main()
