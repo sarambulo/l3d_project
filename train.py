@@ -24,6 +24,7 @@ from pytorch3d.structures import Meshes
 
 torch.manual_seed(0)
 
+N_PRIMITIVE_PENALTY = 100
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     # Get batch
@@ -97,8 +98,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_probs = ((loss_shape - value).detach() * log_probs).mean() # Decrease the prob of bad generations
         loss_critic = torch.nn.functional.mse_loss(value, loss_shape.detach())
         loss_shape = loss_shape.mean() # Reduce the batch loss
+        loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
 
-        loss = loss_shape + loss_probs + loss_critic
+        loss = loss_shape + loss_probs + loss_critic + loss_num_primitives
 
         # Display metrics
         progress_bar.set_postfix_str(
@@ -153,7 +155,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
             sequence = sample if sequence is None else torch.concat([sequence, sample], dim=1) # (B, T + 1, 11)
 
         primitives = get_primitives(sequence, netPred.n_primitives)
-        vertices, faces = generate_mesh_from_primitives(primitives)
+        vertices, faces = generate_mesh_from_primitives(primitives, device=device)
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)

@@ -173,7 +173,8 @@ class PrimitiveTransformerQuaternion(nn.Module):
         self.scale_head = nn.Sequential(
             nn.Linear(self.d_model + num_classes_embed + translation_embedding + rotation_embedding, self.d_model),
             nn.ReLU(),
-            nn.Linear(self.d_model, 2*scale_embedding)
+            nn.Linear(self.d_model, 2*scale_embedding),
+            nn.Sigmoid()
         )
     
     def _init_weights(self):

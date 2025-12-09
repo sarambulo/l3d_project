@@ -38,7 +38,7 @@ class ToyDataset(Dataset):
         verts = verts.to(torch.float)
         faces = faces_info.verts_idx.to(torch.int)
 
-        center = verts.mean(dim=-1, keepdim=True) # (N, 3) -> (N, 1)
+        center = verts.mean(dim=0, keepdim=True) # (N, 3) -> (N, 1)
         scale = verts.norm(dim=-1).max() # (N, 3) -> (N,) -> ()
         verts = (verts-center)/scale
 
