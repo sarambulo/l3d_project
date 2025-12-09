@@ -15,7 +15,7 @@ from pytorch3d.structures import Meshes, Volumes
 from pytorch3d.ops import sample_points_from_meshes
 from torch.nn.utils.rnn import pad_sequence
 
-class ShapeNetDataset(Dataset):
+class ToyDataset(Dataset):
     def __init__(self, data_dir: str = "./data/toy_dataset/", n_sample_points: int = 10000):
         self.data_dir = data_dir
         self.n_sample_points = n_sample_points

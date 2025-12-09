@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from models.prim_transformer import PrimitiveTransformerQuaternion
 from dataloaders.shapenet import ShapeNetDataset
+from dataloaders.toy_dataset import ToyDataset
 from pytorch3d.ops import sample_points_from_meshes
 from tqdm import tqdm
 
@@ -213,20 +214,37 @@ def main():
         os.makedirs(params.snapshotDir)
 
     # Load dataset
-    train_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet_train/",
-        n_sample_points=4096,  # Match Michelangelo's training
-    )
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
-    )
-    test_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet_test/",
-        n_sample_points=4096,  # Match Michelangelo's training
-    )
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
-    )
+    DATASET = "Toy"
+    if DATASET == "Shapenet":
+        train_dataset = ShapeNetDataset(
+            shapenet_dir="./data/shapenet_train/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        train_dataloader = DataLoader(
+            train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
+        )
+        test_dataset = ShapeNetDataset(
+            shapenet_dir="./data/shapenet_test/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        test_dataloader = DataLoader(
+            test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
+        )
+    elif DATASET == "Toy":
+        train_dataset = ToyDataset(
+            data_dir="./data/toy_dataset/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        train_dataloader = DataLoader(
+            train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
+        )
+        test_dataset = ToyDataset(
+            data_dir="./data/toy_dataset/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        test_dataloader = DataLoader(
+            test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
+        )
 
     # Set device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
