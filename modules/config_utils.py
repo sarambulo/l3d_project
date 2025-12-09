@@ -32,7 +32,7 @@ def get_args():
     parser.add_argument('--probLrDecay', type=float, default=0.0001)
     parser.add_argument('--nullReward', type=float, default=0)
     parser.add_argument('--modelIter', type=int, default=2)
-    parser.add_argument('--name', type=str, default='chairChamferSurf', help='Output dir')
+    parser.add_argument('--name', type=str, required=True, help='Output dir')
     parser.add_argument('--bMomentum', type=float, default=0.9)
     parser.add_argument('--entropyWt', type=float, default=0)
     parser.add_argument('--nSamplesChamfer', type=int, default=150)

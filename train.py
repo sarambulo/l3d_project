@@ -102,9 +102,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     return loss.item()
 
 @torch.inference_mode()
-def evaluate(dataloader, netPred, device, epoch) -> float:
+def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
     # Setup output directory
-    output_dir = f'visualizations/epoch_{epoch}/'
+    output_dir = Path(vis_dir, f'epoch_{epoch}')
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get batch
@@ -265,7 +265,7 @@ def main():
 
         # Visualize results
         if iter % params.visIter == 0:
-            evaluate(test_dataloader, netPred, device, epoch=iter)
+            evaluate(test_dataloader, netPred, device, epoch=iter, vis_dir=params.visDir)
 
         if ((iter + 1) % 10) == 0:
             torch.save(
