@@ -14,7 +14,7 @@ from pytorch3d.ops import sample_points_from_meshes
 from tqdm import tqdm
 
 import modules.primitives as primitives
-from losses import chamfer_distance_loss
+from losses import chamfer_distance_loss, primitive_coverage_loss
 from modules.config_utils import get_args
 from utils.get_primitives import get_samples, get_primitives
 from primitives.compose import generate_mesh_from_primitives
@@ -24,7 +24,7 @@ from pytorch3d.structures import Meshes
 
 torch.manual_seed(0)
 
-N_PRIMITIVE_PENALTY = 100
+N_PRIMITIVE_PENALTY = 10
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     # Get batch
@@ -67,6 +67,14 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         primitives = get_primitives(sequence, netPred.n_primitives)
         vertices, faces = generate_mesh_from_primitives(primitives, device=device)
 
+        # print(primitives[0][0])
+        # print(sampledPoints.shape)
+        coverage_loss = primitive_coverage_loss(
+                            primitives=primitives,
+                            gt_points=sampledPoints, 
+                            reduction='mean'
+                        )
+
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
         batch_loss = torch.full((B,), fill_value=10000, dtype=torch.float, device=device)
@@ -76,6 +84,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         vertices = vertices[~empty_mask]
         faces = faces[~empty_mask]
         sampledPoints = sampledPoints[~empty_mask]
+        print(sampledPoints.shape)
         if len(faces) > 0:
             meshes = Meshes(
                 verts=vertices, faces=faces
@@ -100,7 +109,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_shape = loss_shape.mean() # Reduce the batch loss
         loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
 
-        loss = loss_shape + loss_probs + loss_critic + loss_num_primitives
+        loss = loss_shape + loss_probs + loss_critic + 0.2*loss_num_primitives + 0.5*coverage_loss
 
         # Display metrics
         progress_bar.set_postfix_str(
