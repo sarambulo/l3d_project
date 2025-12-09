@@ -155,7 +155,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         self.class_head = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.ReLU(),
-            nn.Linear(self.d_model, self.n_classes)
+            nn.Linear(self.d_model, self.n_classes + 1)
         )
         self.translation_head = nn.Sequential(
             nn.Linear(self.d_model + self.n_classes, self.d_model),
@@ -268,7 +268,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         class_logits = self.class_head(primitive_features)
 
         predicted_class = torch.argmax(class_logits, dim=-1)
-        class_embedding = self.primitive_encoder(class_logits)
+        class_embedding = self.primitive_encoder(predicted_class)
 
         translation_input = torch.cat([primitive_features, class_embedding], dim=-1)
         translation_params = self.translation_head(translation_input)
