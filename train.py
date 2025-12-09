@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from models.prim_transformer import PrimitiveTransformerQuaternion
 from dataloaders.shapenet import ShapeNetDataset
+from dataloaders.toy_dataset import ToyDataset
 from pytorch3d.ops import sample_points_from_meshes
 from tqdm import tqdm
 
@@ -31,6 +32,7 @@ print("CLIP loaded successfully!")
 
 torch.manual_seed(0)
 
+N_PRIMITIVE_PENALTY = 100
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     # Get batch
@@ -89,8 +91,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_probs = ((loss_shape - value).detach() * log_probs).mean() # Decrease the prob of bad generations
         loss_critic = torch.nn.functional.mse_loss(value, loss_shape.detach())
         loss_shape = loss_shape.mean() # Reduce the batch loss
+        loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
 
-        loss = loss_shape + loss_probs + loss_critic
+        loss = loss_shape + loss_probs + loss_critic + loss_num_primitives
 
         # Display metrics
         progress_bar.set_postfix_str(
@@ -200,20 +203,37 @@ def main():
         os.makedirs(params.snapshotDir)
 
     # Load dataset
-    train_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet_train/",
-        n_sample_points=4096,  # Match Michelangelo's training
-    )
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
-    )
-    test_dataset = ShapeNetDataset(
-        shapenet_dir="./data/shapenet_test/",
-        n_sample_points=4096,  # Match Michelangelo's training
-    )
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
-    )
+    DATASET = "Toy"
+    if DATASET == "Shapenet":
+        train_dataset = ShapeNetDataset(
+            shapenet_dir="./data/shapenet_train/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        train_dataloader = DataLoader(
+            train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
+        )
+        test_dataset = ShapeNetDataset(
+            shapenet_dir="./data/shapenet_test/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        test_dataloader = DataLoader(
+            test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
+        )
+    elif DATASET == "Toy":
+        train_dataset = ToyDataset(
+            data_dir="./data/toy_dataset/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        train_dataloader = DataLoader(
+            train_dataset, batch_size=params.batchSize, shuffle=True, num_workers=4, collate_fn=train_dataset.collate_fn
+        )
+        test_dataset = ToyDataset(
+            data_dir="./data/toy_dataset/",
+            n_sample_points=4096,  # Match Michelangelo's training
+        )
+        test_dataloader = DataLoader(
+            test_dataset, batch_size=params.batchSize, shuffle=False, num_workers=4, collate_fn=test_dataset.collate_fn
+        )
 
     # Set device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
