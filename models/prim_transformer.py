@@ -53,6 +53,8 @@ class PrimitiveTransformerQuaternion(nn.Module):
         self.d_model = d_model
         self.n_classes = n_classes
 
+        self.primitive_embedding = d_primitive_embedding
+
         self.michelangelo = ShapeConditioner_miche(dim_latent=256)
 
         for param in self.michelangelo.parameters():
@@ -107,40 +109,71 @@ class PrimitiveTransformerQuaternion(nn.Module):
     def _build_output_heads(self):
         """Build separate prediction heads for each primitive parameter."""
         
-        # Scale prediction: μ_x, μ_y, μ_z, σ_x, σ_y, σ_z (6 values)
-        self.scale_head = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model),
-            nn.ReLU(),
-            nn.Linear(self.d_model, 6),
-        )
+        # # Scale prediction: μ_x, μ_y, μ_z, σ_x, σ_y, σ_z (6 values)
+        # self.scale_head = nn.Sequential(
+        #     nn.Linear(self.d_model, self.d_model),
+        #     nn.ReLU(),
+        #     nn.Linear(self.d_model, 6),
+        # )
         
-        # Rotation prediction: Quaternion with uncertainty (8 values)
-        # μ_w, μ_x, μ_y, μ_z, σ_w, σ_x, σ_y, σ_z
-        self.rotation_head = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model),
-            nn.ReLU(),
-            nn.Linear(self.d_model, 8)
-        )
+        # # Rotation prediction: Quaternion with uncertainty (8 values)
+        # # μ_w, μ_x, μ_y, μ_z, σ_w, σ_x, σ_y, σ_z
+        # self.rotation_head = nn.Sequential(
+        #     nn.Linear(self.d_model, self.d_model),
+        #     nn.ReLU(),
+        #     nn.Linear(self.d_model, 8)
+        # )
         
-        # Translation prediction: μ_x, μ_y, μ_z, σ_x, σ_y, σ_z (6 values)
-        self.translation_head = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model),
-            nn.ReLU(),
-            nn.Linear(self.d_model, 6)
-        )
+        # # Translation prediction: μ_x, μ_y, μ_z, σ_x, σ_y, σ_z (6 values)
+        # self.translation_head = nn.Sequential(
+        #     nn.Linear(self.d_model, self.d_model),
+        #     nn.ReLU(),
+        #     nn.Linear(self.d_model, 6)
+        # )
         
-        # Class prediction: logits for n_classes
+        # # Class prediction: logits for n_classes
+        # self.class_head = nn.Sequential(
+        #     nn.Linear(self.d_model, self.d_model),
+        #     nn.ReLU(),
+        #     nn.Linear(self.d_model, self.n_classes)
+        # )
+        
+        # # EOS prediction: binary logit for end-of-sequence
+        # self.eos_head = nn.Sequential(
+        #     nn.Linear(self.d_model, self.d_model),
+        #     nn.ReLU(),
+        #     nn.Linear(self.d_model, 1)
+        # )
+        translation_embedding = 3
+        rotation_embedding = 4
+        scale_embedding = 3
+
+        num_classes_embed = self.n_classes + 1
+
+        # self.eos_head = nn.Sequential(
+        #     nn.Linear(self.d_model, self.d_model),
+        #     nn.ReLU(),
+        #     nn.Linear(self.d_model, 1)
+        # )
         self.class_head = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.ReLU(),
-            nn.Linear(self.d_model, self.n_classes)
+            nn.Linear(self.d_model, self.n_classes + 1)
         )
-        
-        # EOS prediction: binary logit for end-of-sequence
-        self.eos_head = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model),
+        self.translation_head = nn.Sequential(
+            nn.Linear(self.d_model + num_classes_embed, self.d_model),
             nn.ReLU(),
-            nn.Linear(self.d_model, 1)
+            nn.Linear(self.d_model, 2*translation_embedding)
+        )
+        self.rotation_head = nn.Sequential(
+            nn.Linear(self.d_model + num_classes_embed + translation_embedding, self.d_model),
+            nn.ReLU(),
+            nn.Linear(self.d_model, 2*rotation_embedding)
+        )
+        self.scale_head = nn.Sequential(
+            nn.Linear(self.d_model + num_classes_embed + translation_embedding + rotation_embedding, self.d_model),
+            nn.ReLU(),
+            nn.Linear(self.d_model, 2*scale_embedding)
         )
     
     def _init_weights(self):
@@ -234,11 +267,22 @@ class PrimitiveTransformerQuaternion(nn.Module):
         primitive_features = decoded[:, -1:, :]
         
         # Apply prediction heads
-        scale_params = self.scale_head(primitive_features)
-        rotation_params = self.rotation_head(primitive_features)
-        translation_params = self.translation_head(primitive_features)
+        # eos_logits = self.eos_head(primitive_features)
         class_logits = self.class_head(primitive_features)
-        eos_logits = self.eos_head(primitive_features)
+
+        translation_input = torch.cat([primitive_features, class_logits], dim=-1)
+        translation_params = self.translation_head(translation_input)
+
+        translation_mean = translation_params[:, :, :3]
+
+        rotation_input = torch.cat([primitive_features, class_logits, translation_mean], dim=-1)
+        rotation_params = self.rotation_head(rotation_input)
+
+        rotation_mean = rotation_params[:, :, :4]
+        # rotation_params = torch.cat([rotation_mean, rotation_params[:, :, 4:]], dim=-1)
+        scale_input = torch.cat([primitive_features, class_logits, translation_mean, rotation_mean], dim=-1)
+
+        scale_params = self.scale_head(scale_input)
         
         # Post-process to ensure positive scale values
         scale_params = torch.concat(
@@ -253,7 +297,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         rotation_params = self._postprocess_vars(rotation_params)
         translation_params = self._postprocess_vars(translation_params)
         
-        return scale_params, rotation_params, translation_params, class_logits, eos_logits, point_features, value
+        return scale_params, rotation_params, translation_params, class_logits[:, :, 1:], class_logits[:, :, 0:1], point_features, value
     
     def _postprocess_vars(self, params: torch.Tensor) -> torch.Tensor:
         """Ensures values are positive using softplus."""
