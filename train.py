@@ -22,17 +22,9 @@ from visualization.render_mesh import render_mesh
 from utils.get_optimizer import get_optimizer
 from pytorch3d.structures import Meshes
 
-
-from transformers import CLIPProcessor, CLIPModel
-
-# Test it works
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-print("CLIP loaded successfully!")
-
 torch.manual_seed(0)
 
-N_PRIMITIVE_PENALTY = 100
+N_PRIMITIVE_PENALTY = 0
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     # Get batch
@@ -47,7 +39,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         # translation_params: (B, N_primitives, 6) - μ and σ for 3D translation
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
-        scale, rot, transl, cls, eos, point_feats, value = netPred(
+        scale, rot, transl, cls, eos, value = netPred(
             point_cloud=sampledPoints
         )
 
@@ -91,7 +83,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_probs = ((loss_shape - value).detach() * log_probs).mean() # Decrease the prob of bad generations
         loss_critic = torch.nn.functional.mse_loss(value, loss_shape.detach())
         loss_shape = loss_shape.mean() # Reduce the batch loss
-        loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
+        loss_num_primitives = ((sequence[:, :, 10:] != 0) * N_PRIMITIVE_PENALTY).sum()
 
         loss = loss_shape + loss_probs + loss_critic + loss_num_primitives
 
@@ -133,7 +125,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         # class_logits: (B, N_primitives, n_classes) - class logits
         # eos_logits: (B, N_primitives, 1) - end-of-sequence logits
 
-        scale, rot, transl, cls, eos, point_feats, value = netPred(
+        scale, rot, transl, cls, eos, value = netPred(
             point_cloud=sampledPoints
         )
 
@@ -191,7 +183,7 @@ def main():
     params.visDir = os.path.join("output/visualization/", params.name)
     params.visMeshesDir = os.path.join("output/visualization/meshes/", params.name)
     params.snapshotDir = os.path.join("output/snapshots/", params.name)
-    params.primTypes = 1 # TODO Change to CLI
+    params.primTypes = 6 # TODO Change to CLI
 
     if not os.path.exists(params.visDir):
         os.makedirs(params.visDir)

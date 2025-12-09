@@ -72,7 +72,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         # self.point_feature_proj = nn.Linear(point_feature_dim, d_model)
         
         # Learnable query embeddings (prompt) for primitives
-        self.queries = nn.Parameter(torch.randn(1, self.n_primitives, d_model))
+        self.queries = nn.Parameter(torch.randn(1, 1 + self.n_primitives, d_model))
         
         # Positional encoding
         self.query_pos_encoding = PositionalEncoding(d_model, max_len=n_primitives+1)
@@ -235,7 +235,7 @@ class PrimitiveTransformerQuaternion(nn.Module):
         )
         
         # Get the last predicted timestep
-        primitive_features = decoded
+        primitive_features = decoded[:, 1:, :]
         
         # Apply prediction heads
         # eos_logits = self.eos_head(primitive_features)
