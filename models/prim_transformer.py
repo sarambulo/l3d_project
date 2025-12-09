@@ -111,7 +111,6 @@ class PrimitiveTransformerQuaternion(nn.Module):
         #     nn.Linear(self.d_model, self.d_model),
         #     nn.ReLU(),
         #     nn.Linear(self.d_model, 6),
-            nn.Sigmoid()
         # )
         
         # # Rotation prediction: Quaternion with uncertainty (8 values)

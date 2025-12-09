@@ -27,7 +27,6 @@ def get_args():
     parser.add_argument('--useBn', type=bool, default=True)
     parser.add_argument('--imsave', type=bool, default=False)
     parser.add_argument('--gpu',type=bool, default=True)
-    parser.add_argument('--visIter', type=int, default=1)
     parser.add_argument('--usePretrain', type=bool, default=False)
     parser.add_argument('--shapeLrDecay', type=float, default=0.01)
     parser.add_argument('--probLrDecay', type=float, default=0.0001)
