@@ -71,7 +71,8 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         # print(sampledPoints.shape)
         coverage_loss = primitive_coverage_loss(
                             primitives=primitives,
-                            gt_points=sampledPoints, 
+                            gt_verts=verts,
+                            gt_faces=faces, 
                             reduction='mean'
                         )
 
@@ -84,7 +85,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         vertices = vertices[~empty_mask]
         faces = faces[~empty_mask]
         sampledPoints = sampledPoints[~empty_mask]
-        print(sampledPoints.shape)
+        # print(sampledPoints.shape)
         if len(faces) > 0:
             meshes = Meshes(
                 verts=vertices, faces=faces
@@ -109,7 +110,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_shape = loss_shape.mean() # Reduce the batch loss
         loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
 
-        loss = loss_shape + loss_probs + loss_critic + 0.2*loss_num_primitives + 0.5*coverage_loss
+        loss = loss_shape + loss_probs + loss_critic + 0.2*loss_num_primitives + coverage_loss
 
         # Display metrics
         progress_bar.set_postfix_str(
