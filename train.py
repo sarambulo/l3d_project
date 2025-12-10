@@ -23,7 +23,7 @@ from pytorch3d.structures import Meshes
 
 torch.manual_seed(0)
 
-N_PRIMITIVE_PENALTY = 10
+N_PRIMITIVE_PENALTY = 50
 COVERAGE_PENALTY = 300
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
@@ -96,9 +96,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         progress_bar.set_postfix_str(
             f"Shape Loss: {loss_shape.item():.4f}"
             " | "
-            f"Coverage Loss: {loss_coverage.mean().item():.2%}"
+            f"Coverage Loss: {loss_coverage.item():.2%}"
             " | "
-            f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
+            f"Critic Loss: {loss_critic.sqrt().item():.4f}"
         )
 
         optimizer.zero_grad()
@@ -179,18 +179,18 @@ def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
             render_mesh(vertsGt[index], facesGt[index], output_dir / output_filename_format_gt(visualization_count), device=device)
             visualization_count +=1
 
-        loss_shape = batch_loss.mean().item() / n_batch
-        loss_coverage = coverage_loss(
+        loss_shape += batch_loss.mean().item() / n_batch
+        loss_coverage += coverage_loss(
             primitives=primitives,
             gt_interior_points=interior_points,
             reduction='mean'
         ).item() / n_batch
 
-        print(
-            f"Shape Loss: {loss_shape:.4f}"
-            " | "
-            f"Coverage Loss: {loss_coverage:.2%}"
-        )
+    print(
+        f"Shape Loss: {loss_shape:.4f}"
+        " | "
+        f"Coverage Loss: {loss_coverage:.2%}"
+    )
 
     return loss_shape + loss_coverage
 
