@@ -35,7 +35,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     for batch in progress_bar:
         sampledPoints, verts, faces, interior_points = batch
         sampledPoints = sampledPoints.to(device)
-        interior_points = interior_points.to(device)
+        interior_points = [x.to(device) for x in interior_points]
 
         # scale_params: (B, N_primitives, 6) - μ and σ for 3D scale
         # rotation_params: (B, N_primitives, 8) - μ and σ for quaternion
@@ -72,7 +72,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
-        batch_loss = torch.full((B,), fill_value=10000, dtype=torch.float, device=device)
+        batch_loss = torch.full((B,), fill_value=300, dtype=torch.float, device=device)
 
         # Mask out empty meshes
         empty_mask = (faces == -1).all(dim=[1, 2]) # B
@@ -110,6 +110,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_critic = torch.nn.functional.mse_loss(value, loss_reinforce.detach())
         loss_shape = loss_shape.mean() # Reduce the batch loss
         loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
+        loss_coverage = loss_coverage.mean()
 
         loss = loss_shape + loss_probs + loss_critic + 0.2*loss_num_primitives + loss_coverage
 
@@ -148,7 +149,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
         sampledPoints = sampledPoints.to(device)
         vertsGt = vertsGt.to(device)
         facesGt = facesGt.to(device)
-        interior_points = interior_points.to(device)
+        interior_points = [x.to(device) for x in interior_points]
 
         # scale_params: (B, N_primitives, 6) - μ and σ for 3D scale
         # rotation_params: (B, N_primitives, 8) - μ and σ for quaternion
@@ -173,7 +174,7 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
-        batch_loss = torch.full((B,), fill_value=1000, dtype=torch.float, device=device)
+        batch_loss = torch.full((B,), fill_value=0, dtype=torch.float, device=device)
 
         # Mask out empty meshes
         empty_mask = (faces == -1).all(dim=[1, 2]) # B

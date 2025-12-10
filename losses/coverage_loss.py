@@ -11,7 +11,7 @@ from primitives.compose import compute_combined_sdf_from_primitives
 
 def coverage_loss(
     primitives: List[List],
-    gt_interior_points: torch.Tensor,
+    gt_interior_points: list[torch.Tensor],
     reduction: str | None = 'mean',
     device: str = 'cuda'
 ) -> torch.Tensor:

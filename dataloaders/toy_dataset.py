@@ -38,7 +38,7 @@ class ToyDataset(Dataset):
 
         # Load all interior points
         self.interior_points = [
-            torch.tensor(np.load(file))
+            torch.tensor(np.load(file), dtype=torch.float)
             for file in self.interior_points_files
         ]
 
@@ -89,6 +89,6 @@ class ToyDataset(Dataset):
             padding_value=-1
         )
 
-        batch_interior_points = torch.stack(interior_points_list, dim=0) # (B, N, 3)
+        batch_interior_points = list(interior_points_list) # [(N, 3)]
 
         return batch_points, batch_vertices, batch_faces, batch_interior_points
