@@ -15,6 +15,8 @@ from pytorch3d.structures import Meshes, Volumes
 from pytorch3d.ops import sample_points_from_meshes
 from torch.nn.utils.rnn import pad_sequence
 
+from utils import interior_points
+
 class ToyDataset(Dataset):
     def __init__(self, data_dir: str = "./data/toy_dataset/", n_sample_points: int = 10000):
         self.data_dir = data_dir
@@ -23,14 +25,21 @@ class ToyDataset(Dataset):
         # Collect all .obj files
         data_path = Path(self.data_dir)
         if data_path.exists():
-            self.file_paths = sorted(data_path.glob("*.obj"))
+            self.obj_files = sorted(data_path.glob("*.obj"))
+            self.interior_points_files = sorted(data_path.glob("*.npy"))
         else:
             raise ValueError()
 
         # Load all objects
         self.objects = [
             self._load_mesh(str(file))
-            for file in self.file_paths
+            for file in self.obj_files
+        ]
+
+        # Load all interior points
+        self.interior_points = [
+            torch.tensor(np.load(file))
+            for file in self.interior_points_files
         ]
 
     def _load_mesh(self, filename: str):
@@ -59,11 +68,12 @@ class ToyDataset(Dataset):
 
     def __getitem__(self, index):
         points_with_normals, verts, faces = self.objects[index]
+        interior_points = self.interior_points[index]
         
-        return points_with_normals, verts, faces # (N, 6), where first three are x, y and z and last three are normals along each axis
+        return points_with_normals, verts, faces, interior_points # (N, 6), where first three are x, y and z and last three are normals along each axis
 
     def collate_fn(self, batch):
-        points_list, verts_list, faces_list = zip(*batch)
+        points_list, verts_list, faces_list, interior_points_list = zip(*batch)
 
         batch_points = torch.stack(points_list, dim=0) # (B, N, 6)
 
@@ -79,4 +89,6 @@ class ToyDataset(Dataset):
             padding_value=-1
         )
 
-        return batch_points, batch_vertices, batch_faces
+        batch_interior_points = torch.stack(interior_points_list, dim=0) # (B, N, 3)
+
+        return batch_points, batch_vertices, batch_faces, batch_interior_points
