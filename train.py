@@ -13,8 +13,7 @@ from dataloaders.toy_dataset import ToyDataset
 from pytorch3d.ops import sample_points_from_meshes
 from tqdm import tqdm
 
-import modules.primitives as primitives
-from losses import chamfer_distance_loss
+from losses import chamfer_distance_loss, coverage_loss
 from modules.config_utils import get_args
 from utils.get_primitives import get_samples, get_primitives
 from primitives.compose import generate_mesh_from_primitives
@@ -24,15 +23,17 @@ from pytorch3d.structures import Meshes
 
 torch.manual_seed(0)
 
-N_PRIMITIVE_PENALTY = 0
+N_PRIMITIVE_PENALTY = 10
+COVERAGE_PENALTY = 300
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     # Get batch
     netPred.train()
     progress_bar = tqdm(dataloader, desc="Epoch progress", leave=False)
     for batch in progress_bar:
-        sampledPoints, verts, faces = batch
+        sampledPoints, verts, faces, interior_points = batch
         sampledPoints = sampledPoints.to(device)
+        interior_points = [x.to(device) for x in interior_points]
 
         # scale_params: (B, N_primitives, 6) - μ and σ for 3D scale
         # rotation_params: (B, N_primitives, 8) - μ and σ for quaternion
@@ -54,22 +55,19 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
-        batch_loss = torch.full((B,), fill_value=10000, dtype=torch.float, device=device)
+        batch_loss = torch.full((B,), fill_value=300, dtype=torch.float, device=device)
 
         # Mask out empty meshes
         empty_mask = (faces == -1).all(dim=[1, 2]) # B
         vertices = vertices[~empty_mask]
         faces = faces[~empty_mask]
         sampledPoints = sampledPoints[~empty_mask]
+        # print(sampledPoints.shape)
         if len(faces) > 0:
             meshes = Meshes(
                 verts=vertices, faces=faces
             )
             predPoints = sample_points_from_meshes(meshes, 1000)
-
-            # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
-            # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
-            # loss = cov_loss + params.chamferLossWt * cons_loss
             loss_shape, _ = chamfer_distance_loss(
                 predPoints, sampledPoints[:, :, :3], batch_reduction=None, point_reduction='mean'
             ) # B
@@ -78,18 +76,27 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
             non_empty_indices = torch.arange(0, B, 1, device=device)[~empty_mask]
             batch_loss[non_empty_indices] = loss_shape
         loss_shape = batch_loss
+        loss_coverage = coverage_loss(
+            primitives=primitives,
+            gt_interior_points=interior_points,
+            reduction=None
+        )
+        loss_reinforce = loss_shape + loss_coverage * COVERAGE_PENALTY
 
         value = value.squeeze(-1) # B
-        loss_probs = ((loss_shape - value).detach() * log_probs).mean() # Decrease the prob of bad generations
-        loss_critic = torch.nn.functional.mse_loss(value, loss_shape.detach())
+        loss_probs = ((loss_reinforce - value).detach() * log_probs).mean() # Decrease the prob of bad generations
+
+        loss_critic = torch.nn.functional.mse_loss(value, loss_reinforce.detach())
         loss_shape = loss_shape.mean() # Reduce the batch loss
         loss_num_primitives = ((sequence[:, :, 10:] != 0) * N_PRIMITIVE_PENALTY).sum()
-
-        loss = loss_shape + loss_probs + loss_critic + loss_num_primitives
+        loss_coverage = loss_coverage.mean()
+        loss = loss_shape + loss_probs + loss_critic + 0.2*loss_num_primitives + loss_coverage
 
         # Display metrics
         progress_bar.set_postfix_str(
             f"Shape Loss: {loss_shape.item():.4f}"
+            " | "
+            f"Coverage Loss: {loss_coverage.mean().item():.2%}"
             " | "
             f"Critic Loss: {loss_critic.mean().sqrt().item():.4f}"
         )
@@ -111,13 +118,15 @@ def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
     netPred.eval()
     progress_bar = tqdm(dataloader, desc="Validation progress", leave=False)
     visualization_count = 0
-    validation_loss = 0
+    loss_shape = 0
+    loss_coverage = 0
     n_batch = len(dataloader)
     for batch in progress_bar:
-        sampledPoints, vertsGt, facesGt = batch
+        sampledPoints, vertsGt, facesGt, interior_points = batch
         sampledPoints = sampledPoints.to(device)
         vertsGt = vertsGt.to(device)
         facesGt = facesGt.to(device)
+        interior_points = [x.to(device) for x in interior_points]
 
         # scale_params: (B, N_primitives, 6) - μ and σ for 3D scale
         # rotation_params: (B, N_primitives, 8) - μ and σ for quaternion
@@ -138,7 +147,7 @@ def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
 
         # Start with max_loss for empty meshes
         B = sampledPoints.size(0)
-        batch_loss = torch.full((B,), fill_value=1000, dtype=torch.float, device=device)
+        batch_loss = torch.full((B,), fill_value=0, dtype=torch.float, device=device)
 
         # Mask out empty meshes
         empty_mask = (faces == -1).all(dim=[1, 2]) # B
@@ -151,9 +160,6 @@ def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
             )
             predPoints = sample_points_from_meshes(meshes, 1000)
 
-            # cov_loss = coverage_loss(sampledPoints, predParts) # (B, N, 1)
-            # cons_loss = consistency_loss(predParts, params.nSamplesChamfer, sampledPoints, inputVol) # (B, N, 1)
-            # loss = cov_loss + params.chamferLossWt * cons_loss
             loss, _ = chamfer_distance_loss(
                 predPoints, sampledPoints[:, :, :3], batch_reduction=None, point_reduction='mean'
             ) # B
@@ -165,17 +171,28 @@ def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
             # Visualize predicted mesh
             output_filename_format = '{:d}.gif'.format
             for index in range(len(vertices)):
-                render_mesh(vertices[index], faces[index], output_dir + output_filename_format(visualization_count + index), device=device)
+                render_mesh(vertices[index], faces[index], output_dir / output_filename_format(visualization_count + index), device=device)
 
         # Visualize ground truth mesh
         for index in range(B):
             output_filename_format_gt = '{:d}_gt.gif'.format
-            render_mesh(vertsGt[index], facesGt[index], output_dir + output_filename_format_gt(visualization_count), device=device)
+            render_mesh(vertsGt[index], facesGt[index], output_dir / output_filename_format_gt(visualization_count), device=device)
             visualization_count +=1
 
-        validation_loss += batch_loss.mean().item() / n_batch
+        loss_shape = batch_loss.mean().item() / n_batch
+        loss_coverage = coverage_loss(
+            primitives=primitives,
+            gt_interior_points=interior_points,
+            reduction='mean'
+        ).item() / n_batch
 
-    return validation_loss
+        print(
+            f"Shape Loss: {loss_shape:.4f}"
+            " | "
+            f"Coverage Loss: {loss_coverage:.2%}"
+        )
+
+    return loss_shape + loss_coverage
 
 def main():
 

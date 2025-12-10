@@ -1,62 +1,52 @@
+"""
+Coverage Loss: Measures how much of the ground truth mesh is covered by primitives.
+
+The coverage loss ensures that the predicted primitive volumes actually cover
+the points sampled from the ground truth mesh.
+"""
+
 import torch
-import torch.nn.functional as F
+from typing import List
+from primitives.compose import compute_combined_sdf_from_primitives
 
-from modules.transformer import rigidTsdf
+def coverage_loss(
+    primitives: List[List],
+    gt_interior_points: list[torch.Tensor],
+    reduction: str | None = 'mean',
+    device: str = 'cuda'
+) -> torch.Tensor:
 
-from pytorch3d.loss import chamfer_distance as chamfer_distance_loss
-
-def coverage_loss(sampledPoints, predParts):  ## coverage loss
-    """
-    To what degree is the ground truth model inside the predicted composition
-
-    Returns the truncated (always positive) signed distance between the
-    sampled points and the surface and the composition.
-
-    :param sampledPoints: Points in the surface of the ground truth model
-    :param predParts: Predicted parts of the composition
-    """
-    # sampledPoints  B x nP x 3
-    # predParts  B x nParts x 10
-    nParts = predParts.size(1)
-    predParts = torch.chunk(predParts, nParts, dim=1)
-    tsdfParts = []
-    existence_weights = []
-    for i in range(nParts):
-        tsdf = tsdf_transform(sampledPoints, predParts[i])  # B x nP x 1
-        tsdfParts.append(tsdf)
-        existence_weights.append(get_existence_weights(tsdf, predParts[i]))
-
-    existence_all = torch.cat(existence_weights, dim=2)
-    tsdf_all = torch.cat(tsdfParts, dim=2) + existence_all
-    # Get the min coverage loss across parts
-    tsdf_final = -1 * F.max_pool1d(-1 * tsdf_all, kernel_size=nParts)  # B x nP
-    tsdf_final = tsdf_final.mean()
-    return tsdf_final
-
-
-def tsdf_transform(sample_points, part):
-    ## sample_points Batch_size x nP x 2, # parts Batch_size x 1 x 10
-    shape = part[:, :, 0:3]  # B x 1 x 3
-    trans = part[:, :, 3:6]  # B  x 1 x 3
-    quat = part[:, :, 6:10]  # B x 1 x 4
-
-    p1 = rigidTsdf(sample_points, trans, quat)  # B x nP x 3
-    tsdf = cuboid_tsdf(p1, shape)  # B x nP x 1
-    return tsdf
-
-
-def cuboid_tsdf(sample_points, shape):
-    ## sample_points Batch_size x nP x 3 , shape Batch_size x 1 x 3,
-    ## output Batch_size x nP x 3
-    nP = sample_points.size(1)
-    shape_rep = shape.repeat(1, nP, 1)
-    tsdf = torch.abs(sample_points) - shape_rep
-    tsdfSq = F.relu(tsdf).pow(2).sum(dim=2, keepdim=True)
-    return tsdfSq  ## Batch_size x nP x 1
-
-
-def get_existence_weights(tsdf, part):
-    e = part[:, :, 11:12]
-    e = e.expand(tsdf.size())
-    e = (1 - e) * 10
-    return e
+    B = len(primitives)
+    batch_losses = []
+    
+    for b in range(B):
+        batch_primitives = primitives[b]
+        sdf = compute_combined_sdf_from_primitives(
+            grid_points=gt_interior_points[b],
+            primitives=[batch_primitives]
+        )
+        if sdf is None:
+            # Case: Empty composition -> 100% of the points where outside the primitives
+            batch_losses.append(torch.tensor([1]))
+        else:
+            # Squeeze if needed
+            if sdf.dim() > 1:
+                sdf = sdf.squeeze(0)
+            
+            # Convert SDF to occupancy (inside = 1, outside = 0)
+            loss = (sdf > 0).float().mean() # % of points outside the primitives
+            
+            batch_losses.append(loss)
+    
+    # Stack batch losses
+    batch_losses = torch.stack(batch_losses)  # (B,)
+    
+    # Apply reduction
+    if reduction == 'mean':
+        return batch_losses.mean()
+    elif reduction == 'sum':
+        return batch_losses.sum()
+    elif reduction is None:
+        return batch_losses
+    else:
+        raise ValueError(f"Unknown reduction: {reduction}")
