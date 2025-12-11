@@ -285,8 +285,8 @@ def main():
         )
 
         # Visualize results
-        if iter % params.visIter == 0:
-            evaluate(test_dataloader, netPred, device, epoch=iter, vis_dir=params.visDir)
+        if (iter + 1) % params.visIter == 0:
+            evaluate(test_dataloader, netPred, device, epoch=iter)
 
         if ((iter + 1) % 10) == 0:
             torch.save(
