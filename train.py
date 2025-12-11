@@ -171,11 +171,13 @@ def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
             batch_loss[non_empty_indices] = loss
 
             # Visualize predicted mesh
-            output_filename_format = '{:d}.gif'.format
             for index in range(len(vertices)):
-                output_filename = output_dir / output_filename_format(visualization_count + index)
-                render_mesh(vertices[index], faces[index], output_filename, device=device)
-                save_obj(output_filename, vertices[index], faces[index])
+                gif_filename_format = '{:d}.gif'.format
+                output_gif = output_dir / gif_filename_format(visualization_count + index)
+                obj_filename_format = '{:d}.obj'.format
+                output_obj = output_dir / obj_filename_format(visualization_count + index)
+                render_mesh(vertices[index], faces[index], output_gif, device=device)
+                save_obj(output_obj, vertices[index], faces[index])
 
         # Visualize ground truth mesh
         for index in range(B):
@@ -274,7 +276,7 @@ def main():
     netPred.to(device)
 
     # Setup optimizer
-    optimizer = get_optimizer(netPred, lr=0.0003)
+    optimizer = get_optimizer(netPred, lr=0.00003)
 
     # Initialize training metrics
 
