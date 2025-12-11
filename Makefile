@@ -1,12 +1,11 @@
-train:
+shape_exp1:
 	python train.py \
-		--disp=False \
-		--modelsDataDir=../data/r2n2_shapenet/ \
-		--batchSize=8 \
-		--nParts=20 \
-		--nullReward=0 \
-		--probLrDecay=0.0001 \
-		--shapeLrDecay=0.01 \
-		--synset=chair \
-		--numTrainIter=5 \
-		--name=test
+		--coverageLOSS=0 \
+		--countLOSS=0 \
+		--name=shape_exp1
+
+infer_shape_exp1:
+	python inference.py \
+		--dataset=Shapenet \
+		--checkpoint=output/snapshots/shape_exp1/iter9.pkl \
+		--name=shape_exp1

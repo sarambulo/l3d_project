@@ -68,17 +68,10 @@ def main():
 
     params = get_args()
     params.visDir = os.path.join("output/visualization/", params.name)
-    params.snapshotDir = os.path.join("output/snapshots/", params.name)
     params.primTypes = 6 # TODO Change to CLI
 
     if not os.path.exists(params.visDir):
         os.makedirs(params.visDir)
-
-    if not os.path.exists(params.visMeshesDir):
-        os.makedirs(params.visMeshesDir)
-
-    if not os.path.exists(params.snapshotDir):
-        os.makedirs(params.snapshotDir)
 
     # Load dataset
     DATASET = params.dataset
