@@ -9,6 +9,7 @@ def get_args():
     parser.add_argument('--coverageLoss', type=float, default=500)
     parser.add_argument('--countLoss', type=float, default=100)
     parser.add_argument('--nParts', type=int, default=8, help='Number of primitives')
+    parser.add_argument('--checkpoint', type=str, default=None, help='Checkpoint to load')
 
     parser.add_argument('--batchSize', type=int, default=2)
     parser.add_argument('--numTrainIter', type=int, default=10)
