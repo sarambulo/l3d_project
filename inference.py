@@ -57,7 +57,7 @@ def predict_composition(dataloader, netPred, device, output_dir: str):
                 save_obj(output_obj, vertices[index], faces[index])
 
         # Visualize ground truth mesh
-        for index in range(len(batch)):
+        for index in range(len(vertsGt)):
             output_filename_format_gt = '{:d}_gt.gif'.format
             render_mesh(vertsGt[index], facesGt[index], output_path / output_filename_format_gt(visualization_count), device=device)
             visualization_count +=1
