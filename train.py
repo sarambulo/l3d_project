@@ -131,9 +131,9 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     return loss.item()
 
 @torch.inference_mode()
-def evaluate(dataloader, netPred, device, epoch) -> float:
+def evaluate(dataloader, netPred, device, epoch, vis_dir) -> float:
     # Setup output directory
-    output_dir = f'visualizations/epoch_{epoch}/'
+    output_dir = Path(vis_dir) / f'epoch_{epoch}'
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get batch
@@ -195,16 +195,18 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
             batch_loss[non_empty_indices] = loss
 
             # Visualize predicted mesh
-            output_filename_format = '{:d}.gif'.format
             for index in range(len(vertices)):
-                output_filename = output_dir + output_filename_format(visualization_count + index)
-                render_mesh(vertices[index], faces[index], output_filename, device=device)
-                save_obj(output_filename, vertices[index], faces[index])
+                gif_filename_format = '{:d}.gif'.format
+                output_gif = output_dir / gif_filename_format(visualization_count + index)
+                obj_filename_format = '{:d}.obj'.format
+                output_obj = output_dir / obj_filename_format(visualization_count + index)
+                render_mesh(vertices[index], faces[index], output_gif, device=device)
+                save_obj(output_obj, vertices[index], faces[index])
 
         # Visualize ground truth mesh
         for index in range(B):
             output_filename_format_gt = '{:d}_gt.gif'.format
-            render_mesh(vertsGt[index], facesGt[index], output_dir + output_filename_format_gt(visualization_count), device=device)
+            render_mesh(vertsGt[index], facesGt[index], output_dir / output_filename_format_gt(visualization_count), device=device)
             visualization_count +=1
 
         loss_shape = batch_loss.mean().item() / n_batch
@@ -298,7 +300,7 @@ def main():
     netPred.to(device)
 
     # Setup optimizer
-    optimizer = get_optimizer(netPred, lr=0.003)
+    optimizer = get_optimizer(netPred, lr=0.00003)
 
     # Initialize training metrics
 
@@ -310,7 +312,7 @@ def main():
 
         # Visualize results
         if (iter + 1) % params.visIter == 0:
-            evaluate(test_dataloader, netPred, device, epoch=iter)
+            evaluate(test_dataloader, netPred, device, epoch=iter, vis_dir=params.visDir)
 
         if ((iter + 1) % 10) == 0:
             torch.save(
