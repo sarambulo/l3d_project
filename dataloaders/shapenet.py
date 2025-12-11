@@ -58,10 +58,11 @@ class ShapeNetDataset(Dataset):
         surface_points = surface_points / scale
 
         points_normals = torch.cat([surface_points, normals], dim=-1)
-        return points_normals, verts, faces # (N, 6), where first three are x, y and z and last three are normals along each axis
+        interior_points = surface_points
+        return points_normals, verts, faces, interior_points # (N, 6), where first three are x, y and z and last three are normals along each axis
 
     def collate_fn(self, batch):
-        points_list, verts_list, faces_list = zip(*batch)
+        points_list, verts_list, faces_list, interior_points = zip(*batch)
 
         batch_points = torch.stack(points_list, dim=0)
 
@@ -77,4 +78,6 @@ class ShapeNetDataset(Dataset):
             padding_value=-1
         )
 
-        return batch_points, batch_vertices, batch_faces
+        interior_points = list(interior_points)
+
+        return batch_points, batch_vertices, batch_faces, interior_points
