@@ -11,12 +11,11 @@ from models.prim_transformer import PrimitiveTransformerQuaternion
 from dataloaders.shapenet import ShapeNetDataset
 from dataloaders.toy_dataset import ToyDataset
 from pytorch3d.ops import sample_points_from_meshes
+from pytorch3d.io import save_obj
 from tqdm import tqdm
 
-import modules.primitives as primitives
 from losses import chamfer_distance_loss, coverage_loss
 from modules.config_utils import get_args
-from utils import interior_points
 from utils.get_primitives import get_samples, get_primitives
 from primitives.compose import generate_mesh_from_primitives
 from visualization.render_mesh import render_mesh
@@ -25,10 +24,10 @@ from pytorch3d.structures import Meshes
 
 torch.manual_seed(0)
 
-N_PRIMITIVE_PENALTY = 10
-COVERAGE_PENALTY = 300
 
 def train(dataloader, netPred, optimizer, iter, params, device) -> float:
+    N_PRIMITIVE_PENALTY = params.countLoss
+    COVERAGE_PENALTY = params.coverageLoss
     # Get batch
     netPred.train()
     progress_bar = tqdm(dataloader, desc="Epoch progress", leave=False)
@@ -198,7 +197,9 @@ def evaluate(dataloader, netPred, device, epoch) -> float:
             # Visualize predicted mesh
             output_filename_format = '{:d}.gif'.format
             for index in range(len(vertices)):
-                render_mesh(vertices[index], faces[index], output_dir + output_filename_format(visualization_count + index), device=device)
+                output_filename = output_dir + output_filename_format(visualization_count + index)
+                render_mesh(vertices[index], faces[index], output_filename, device=device)
+                save_obj(output_filename, vertices[index], faces[index])
 
         # Visualize ground truth mesh
         for index in range(B):
@@ -239,7 +240,7 @@ def main():
         os.makedirs(params.snapshotDir)
 
     # Load dataset
-    DATASET = "Toy"
+    DATASET = params.dataset
     if DATASET == "Shapenet":
         train_dataset = ShapeNetDataset(
             shapenet_dir="./data/shapenet_train/",
@@ -297,7 +298,7 @@ def main():
     netPred.to(device)
 
     # Setup optimizer
-    optimizer = get_optimizer(netPred, lr=3e-5)
+    optimizer = get_optimizer(netPred, lr=0.003)
 
     # Initialize training metrics
 
