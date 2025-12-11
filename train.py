@@ -274,7 +274,7 @@ def main():
     netPred.to(device)
 
     # Setup optimizer
-    optimizer = get_optimizer(netPred, lr=0.003)
+    optimizer = get_optimizer(netPred, lr=0.0003)
 
     # Initialize training metrics
 
