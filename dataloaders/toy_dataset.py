@@ -61,14 +61,15 @@ class ToyDataset(Dataset):
 
         points_with_normals = torch.cat([points, normals], dim=-1) # (N, 6)
 
-        return points_with_normals, verts, faces
+        return points_with_normals, verts, faces, center, scale
 
     def __len__(self):
         return len(self.objects)
 
     def __getitem__(self, index):
-        points_with_normals, verts, faces = self.objects[index]
+        points_with_normals, verts, faces, center, scale = self.objects[index]
         interior_points = self.interior_points[index]
+        interior_points = (interior_points - center) / scale
         
         return points_with_normals, verts, faces, interior_points # (N, 6), where first three are x, y and z and last three are normals along each axis
 
