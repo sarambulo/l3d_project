@@ -111,7 +111,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
         loss_num_primitives = ((sampled_types != 0) * N_PRIMITIVE_PENALTY).sum()
         loss_coverage = loss_coverage.mean()
 
-        loss = loss_shape + loss_probs + loss_critic + 0.2*loss_num_primitives + loss_coverage
+        loss = loss_shape + loss_probs + loss_critic + loss_num_primitives + loss_coverage
 
         # Display metrics
         progress_bar.set_postfix_str(
