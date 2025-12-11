@@ -111,7 +111,7 @@ def train(dataloader, netPred, optimizer, iter, params, device) -> float:
     return loss.item()
 
 @torch.inference_mode()
-def evaluate(dataloader, netPred, device, epoch, vis_dir: str) -> float:
+def evaluate(dataloader, netPred, device, epoch, vis_dir: str, vis_dir) -> float:
     # Setup output directory
     output_dir = Path(vis_dir, f'epoch_{epoch}')
     Path(output_dir).mkdir(parents=True, exist_ok=True)
