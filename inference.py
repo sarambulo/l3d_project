@@ -61,7 +61,7 @@ def predict_composition(dataloader, netPred, device, output_dir: str):
             gif_filename_format = '{:d}_gt.gif'.format
             obj_filename_format = '{:d}_gt.obj'.format
             render_mesh(vertsGt[index], facesGt[index], output_path / gif_filename_format(visualization_count), device=device)
-            save_obj(output_path / obj_filename_format(visualization_count + index), vertices[index], faces[index])
+            save_obj(output_path / obj_filename_format(visualization_count), vertices[index], faces[index])
             visualization_count +=1
 
     return
