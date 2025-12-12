@@ -1,8 +1,26 @@
 shape_exp1:
 	python train.py \
+		--dataset=Shapenet \
 		--coverageLOSS=0 \
 		--countLOSS=0 \
 		--name=shape_exp1
+
+shape_exp2:
+	python train.py \
+		--dataset=Shapenet \
+		--countLOSS=0 \
+		--name=shape_exp2
+
+shape_exp3:
+	python train.py \
+		--dataset=Shapenet \
+		--name=shape_exp3
+
+shape_exp4:
+	python train.py \
+		--dataset=Shapenet \
+		--name=shape_exp4 \
+		--nParts=2
 
 infer_shape_exp1:
 	python inference.py \

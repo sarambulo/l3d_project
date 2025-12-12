@@ -35,7 +35,7 @@ def render_mesh(vertices, faces, output_filename, device):
 
     # Initialize renderer
     raster_settings = pytorch3d.renderer.RasterizationSettings(
-        image_size=256, blur_radius=0.0, faces_per_pixel=1,
+        image_size=256, blur_radius=0.0, faces_per_pixel=1, bin_size=64
     )
     renderer = pytorch3d.renderer.MeshRenderer(
         rasterizer=pytorch3d.renderer.MeshRasterizer(raster_settings=raster_settings),
